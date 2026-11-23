@@ -37,9 +37,6 @@ object AppUpdater {
 
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/wandavenus/Notely/releases/latest"
-    private const val PREFS_NAME = "pembaruan"
-    private const val KEY_LAST_CHECK = "cek_terakhir"
-    private const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 
     /** Versi aplikasi yang sedang terpasang (dari PackageManager). */
     fun currentVersion(context: Context): String {
@@ -161,18 +158,4 @@ object AppUpdater {
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
             Uri.parse("package:${context.packageName}"),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    /** Pemeriksaan otomatis cukup sekali per 6 jam. */
-    fun shouldAutoCheck(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val last = prefs.getLong(KEY_LAST_CHECK, 0L)
-        return System.currentTimeMillis() - last > AUTO_CHECK_INTERVAL_MS
-    }
-
-    fun markChecked(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_LAST_CHECK, System.currentTimeMillis())
-            .apply()
-    }
 }

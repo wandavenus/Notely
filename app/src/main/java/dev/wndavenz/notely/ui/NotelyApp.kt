@@ -14,7 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
 import dev.wndavenz.notely.ui.components.UpdateDialog
@@ -99,7 +102,6 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
         if (manual) updateState = UpdateUiState.Checking
         appScope.launch {
             val result = AppUpdater.checkLatest(AppUpdater.currentVersion(context))
-            AppUpdater.markChecked(context)
             val stillChecking = updateState is UpdateUiState.Checking
             when (result) {
                 is CheckResult.Available ->
@@ -144,9 +146,14 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
         }
     }
 
-    // Pemeriksaan otomatis saat aplikasi dibuka (maksimal sekali per 6 jam).
-    LaunchedEffect(Unit) {
-        if (AppUpdater.shouldAutoCheck(context)) runUpdateCheck(manual = false)
+    // Pemeriksaan otomatis tiap aplikasi dibuka / kembali ke depan.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) runUpdateCheck(manual = false)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(
