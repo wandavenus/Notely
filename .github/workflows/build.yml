@@ -24,9 +24,6 @@ jobs:
       - name: Siapkan Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Tes unit
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
       - name: Build APK rilis (minify + R8 + shrink)
         run: ./gradlew :app:assembleRelease --stacktrace
 
