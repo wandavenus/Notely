@@ -1,0 +1,43 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil kode
+        uses: actions/checkout@v4
+
+      - name: Siapkan JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Siapkan Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Tes unit
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build APK debug
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Build APK rilis (minify + R8 + shrink)
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Unggah APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: notely-apks
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

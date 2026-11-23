@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Halaman catatan putih -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,22 L66,22 Q74,22 74,30 L74,78 Q74,86 66,86 L34,86 Q26,86 26,78 L26,30 Q26,22 34,22 Z" />
+    <!-- Pita kuning khas Notes -->
+    <path
+        android:fillColor="#FFD60A"
+        android:pathData="M34,22 L66,22 Q74,22 74,30 L74,36 L26,36 L26,30 Q26,22 34,22 Z" />
+    <!-- Garis teks -->
+    <path
+        android:fillColor="#C7C7CC"
+        android:pathData="M33,46 L67,46 L67,50 L33,50 Z" />
+    <path
+        android:fillColor="#C7C7CC"
+        android:pathData="M33,56 L67,56 L67,60 L33,60 Z" />
+    <path
+        android:fillColor="#C7C7CC"
+        android:pathData="M33,66 L56,66 L56,70 L33,70 Z" />
+</vector>
