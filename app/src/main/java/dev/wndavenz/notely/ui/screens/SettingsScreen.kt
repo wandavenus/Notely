@@ -1,5 +1,6 @@
 package dev.wndavenz.notely.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,10 +22,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.composables.icons.lucide.ChevronRight
+import com.composables.icons.lucide.Lucide
 import dev.wndavenz.notely.data.NotesRepository
+import dev.wndavenz.notely.update.AppUpdater
 import dev.wndavenz.notely.ui.SettingsViewModel
 import dev.wndavenz.notely.ui.components.IosConfirmDialog
 import dev.wndavenz.notely.ui.components.IosDivider
@@ -38,6 +45,7 @@ import dev.wndavenz.notely.ui.viewModelFactory
 fun SettingsScreen(
     repository: NotesRepository,
     onBack: () -> Unit,
+    onCheckUpdate: () -> Unit = {},
 ) {
     val viewModel: SettingsViewModel = viewModel(
         key = "settings",
@@ -45,6 +53,8 @@ fun SettingsScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var confirmEmptyTrash by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val installedVersion = remember(context) { AppUpdater.currentVersion(context) }
 
     Column(
         modifier = Modifier
@@ -103,9 +113,33 @@ fun SettingsScreen(
             item { Spacer(Modifier.height(18.dp)) }
             item {
                 IosGroupCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onCheckUpdate)
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BasicText(
+                            text = "Periksa Pembaruan",
+                            style = NotelyText.Body,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Image(
+                            imageVector = Lucide.ChevronRight,
+                            contentDescription = null,
+                            colorFilter = ColorFilter.tint(NotelyColors.SecondaryLabel),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(18.dp)) }
+            item {
+                IosGroupCard {
                     InfoRow(label = "Notely", value = null)
                     IosDivider(insetStart = 14.dp)
-                    InfoRow(label = "Versi", value = "1.0.0")
+                    InfoRow(label = "Versi", value = installedVersion)
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }

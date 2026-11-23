@@ -14,18 +14,30 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
+import dev.wndavenz.notely.ui.components.UpdateDialog
+import dev.wndavenz.notely.ui.components.UpdateUiState
 import dev.wndavenz.notely.ui.screens.EditorScreen
 import dev.wndavenz.notely.ui.screens.FoldersScreen
 import dev.wndavenz.notely.ui.screens.NotesListScreen
 import dev.wndavenz.notely.ui.screens.SettingsScreen
 import dev.wndavenz.notely.ui.theme.NotelyColors
+import dev.wndavenz.notely.update.AppUpdater
+import dev.wndavenz.notely.update.CheckResult
+import dev.wndavenz.notely.update.UpdateInfo
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /** Jenis daftar catatan yang sedang dibuka. */
 sealed interface ListView {
@@ -72,6 +84,70 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
     }
 
     BackHandler(enabled = backStack.size > 1) { pop() }
+
+    // --- Pembaruan mandiri (GitHub Releases) ---
+    val context = LocalContext.current
+    var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
+    var downloadJob by remember { mutableStateOf<Job?>(null) }
+
+    fun runUpdateCheck(manual: Boolean) {
+        if (updateState is UpdateUiState.Checking ||
+            updateState is UpdateUiState.Downloading
+        ) {
+            return
+        }
+        if (manual) updateState = UpdateUiState.Checking
+        appScope.launch {
+            val result = AppUpdater.checkLatest(AppUpdater.currentVersion(context))
+            AppUpdater.markChecked(context)
+            val stillChecking = updateState is UpdateUiState.Checking
+            when (result) {
+                is CheckResult.Available ->
+                    updateState = UpdateUiState.Available(result.info)
+
+                CheckResult.UpToDate ->
+                    if (manual && stillChecking) updateState = UpdateUiState.UpToDate
+
+                CheckResult.Failed ->
+                    if (manual && stillChecking) {
+                        updateState = UpdateUiState.Failed(
+                            "Tidak bisa memeriksa pembaruan. Periksa koneksi internet lalu coba lagi.",
+                        )
+                    } else if (stillChecking) {
+                        updateState = UpdateUiState.Idle
+                    }
+            }
+        }
+    }
+
+    fun startUpdateDownload(info: UpdateInfo) {
+        if (!AppUpdater.canInstall(context)) {
+            // Belum diizinkan memasang dari sumber tak dikenal: antar ke
+            // pengaturannya dulu; dialog tetap tampil supaya bisa dicoba lagi.
+            context.startActivity(AppUpdater.unknownSourcesIntent(context))
+            return
+        }
+        updateState = UpdateUiState.Downloading(info, null)
+        downloadJob = appScope.launch {
+            try {
+                val file = AppUpdater.download(context, info) { progress ->
+                    updateState = UpdateUiState.Downloading(info, progress)
+                }
+                updateState = UpdateUiState.Idle
+                context.startActivity(AppUpdater.installIntent(context, file))
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                updateState = UpdateUiState.Failed(
+                    "Unduhan gagal. Periksa koneksi internet lalu coba lagi.",
+                )
+            }
+        }
+    }
+
+    // Pemeriksaan otomatis saat aplikasi dibuka (maksimal sekali per 6 jam).
+    LaunchedEffect(Unit) {
+        if (AppUpdater.shouldAutoCheck(context)) runUpdateCheck(manual = false)
+    }
 
     Box(
         modifier = Modifier
@@ -139,8 +215,19 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                 Destination.Settings -> SettingsScreen(
                     repository = repository,
                     onBack = { pop() },
+                    onCheckUpdate = { runUpdateCheck(manual = true) },
                 )
             }
         }
+
+        UpdateDialog(
+            state = updateState,
+            onDismiss = { updateState = UpdateUiState.Idle },
+            onUpdate = { info -> startUpdateDownload(info) },
+            onCancelDownload = {
+                downloadJob?.cancel()
+                updateState = UpdateUiState.Idle
+            },
+        )
     }
 }
