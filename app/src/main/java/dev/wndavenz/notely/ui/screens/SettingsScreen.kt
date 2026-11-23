@@ -38,7 +38,7 @@ import dev.wndavenz.notely.ui.viewModelFactory
 fun SettingsScreen(
     repository: NotesRepository,
     onBack: () -> Unit,
-    hideBackLabel: Boolean = false,
+    backLabelAlpha: Float = 1f,
 ) {
     val viewModel: SettingsViewModel = viewModel(
         key = "settings",
@@ -55,7 +55,7 @@ fun SettingsScreen(
         IosTopBar(
             backLabel = "Folder",
             onBack = onBack,
-            backLabelAlpha = if (hideBackLabel) 0f else 1f,
+            backLabelAlpha = backLabelAlpha,
         )
         LazyColumn(
             modifier = Modifier

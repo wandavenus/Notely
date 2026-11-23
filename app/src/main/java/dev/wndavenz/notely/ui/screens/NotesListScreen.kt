@@ -56,8 +56,8 @@ fun NotesListScreen(
     onBack: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
     onCompose: (Long) -> Unit,
-    hideLargeTitle: Boolean = false,
-    hideBackLabel: Boolean = false,
+    largeTitleAlpha: Float = 1f,
+    backLabelAlpha: Float = 1f,
 ) {
     val viewModel: NotesListViewModel = viewModel(
         key = "list-$view",
@@ -89,7 +89,7 @@ fun NotesListScreen(
         IosTopBar(
             backLabel = "Folder",
             onBack = onBack,
-            backLabelAlpha = if (hideBackLabel) 0f else 1f,
+            backLabelAlpha = backLabelAlpha,
             trailing = {
                 if (isTrash && notes.isNotEmpty()) {
                     IosTextButton(
@@ -111,7 +111,7 @@ fun NotesListScreen(
                     text = titleOf(view),
                     style = NotelyText.LargeTitle,
                     modifier = Modifier
-                        .alpha(if (hideLargeTitle) 0f else 1f)
+                        .alpha(largeTitleAlpha)
                         .padding(start = 4.dp, bottom = 10.dp),
                 )
                 IosSearchField(state = searchState, placeholder = "Cari")

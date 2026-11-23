@@ -72,7 +72,7 @@ fun FoldersScreen(
     onOpenSettings: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
     onCompose: (Long) -> Unit,
-    hideLargeTitle: Boolean = false,
+    largeTitleAlpha: Float = 1f,
 ) {
     val viewModel: FoldersViewModel = viewModel(
         key = "folders",
@@ -119,7 +119,7 @@ fun FoldersScreen(
                     text = "Folder",
                     style = NotelyText.LargeTitle,
                     modifier = Modifier
-                        .alpha(if (hideLargeTitle) 0f else 1f)
+                        .alpha(largeTitleAlpha)
                         .padding(start = 4.dp, bottom = 10.dp),
                 )
                 IosSearchField(state = searchState, placeholder = "Telusuri")

@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -130,21 +131,29 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
     }
     val morphActive = morphText != null && morphProgress.value < 1f
 
-    fun hideLargeTitle(destination: Destination): Boolean =
-        morphActive && ((morphForward && destination == morphFrom) ||
-            (!morphForward && destination == morphTo))
+    // Di 15% terakhir animasi, judul morph memudar dan judul asli di layar
+    // memudar masuk, supaya titik mendaratnya mulus tanpa lompatan.
+    val settle = if (morphActive) {
+        ((morphProgress.value - 0.85f) / 0.15f).coerceIn(0f, 1f)
+    } else {
+        1f
+    }
 
-    fun hideBackLabel(destination: Destination): Boolean =
-        morphActive && ((morphForward && destination == morphTo) ||
-            (!morphForward && destination == morphFrom))
+    fun largeTitleAlpha(destination: Destination): Float {
+        val owner = if (morphForward) morphFrom else morphTo
+        return if (morphActive && destination == owner) settle else 1f
+    }
+
+    fun backLabelAlpha(destination: Destination): Float {
+        val owner = if (morphForward) morphTo else morphFrom
+        return if (morphActive && destination == owner) settle else 1f
+    }
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(NotelyColors.Background),
     ) {
-        val screenWidth = maxWidth
-
         // Transisi geser gaya iOS: maju = layar baru masuk dari kanan dan
         // layar lama bergeser sepertiga ke kiri; mundur = kebalikannya.
         AnimatedContent(
@@ -175,7 +184,7 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     onCompose = { folderId ->
                         navigate(Destination.Editor(null, folderId, "Folder"))
                     },
-                    hideLargeTitle = hideLargeTitle(destination),
+                    largeTitleAlpha = largeTitleAlpha(destination),
                 )
 
                 is Destination.NoteList -> NotesListScreen(
@@ -192,8 +201,8 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                             Destination.Editor(null, folderId, titleOf(destination.view)),
                         )
                     },
-                    hideLargeTitle = hideLargeTitle(destination),
-                    hideBackLabel = hideBackLabel(destination),
+                    largeTitleAlpha = largeTitleAlpha(destination),
+                    backLabelAlpha = backLabelAlpha(destination),
                 )
 
                 is Destination.Editor -> EditorScreen(
@@ -204,40 +213,30 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     parentTitle = destination.parentTitle,
                     sessionKey = destination.sessionKey,
                     onBack = { pop() },
-                    hideBackLabel = hideBackLabel(destination),
+                    backLabelAlpha = backLabelAlpha(destination),
                 )
 
                 Destination.Settings -> SettingsScreen(
                     repository = repository,
                     onBack = { pop() },
-                    hideBackLabel = hideBackLabel(destination),
+                    backLabelAlpha = backLabelAlpha(destination),
                 )
             }
         }
 
         // Lapisan morph judul: satu teks yang berjalan di atas kedua layar.
+        // Jalurnya vertikal murni di antara dua posisi diam judul (besar:
+        // x 20, tepat di bawah bilah 44 dp; kecil: label kembali pada
+        // bilah, x 32 = 8 bilah + 24 chevron, atas 11 dp dari bilah) —
+        // tidak mengikuti geseran horizontal layar, supaya tidak melengkung.
         val text = morphText
         if (text != null && morphProgress.value < 1f) {
             val p = morphProgress.value
             val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            // Ujung besar: x 20 (16 halaman + 4 inden), tepat di bawah bilah
-            // 44 dp. Ujung kecil: label kembali pada bilah, x 32 (8 bilah +
-            // 24 chevron), terpusat vertikal (atas = 11 dp dari bilah).
-            val startX: androidx.compose.ui.unit.Dp
-            val endX: androidx.compose.ui.unit.Dp
-            val startY: androidx.compose.ui.unit.Dp
-            val endY: androidx.compose.ui.unit.Dp
-            if (morphForward) {
-                startX = 20.dp - screenWidth / 3f * p
-                endX = 32.dp + screenWidth * (1f - p)
-                startY = statusTop + 44.dp
-                endY = statusTop + 11.dp
-            } else {
-                startX = 32.dp + screenWidth * p
-                endX = 20.dp - screenWidth / 3f * (1f - p)
-                startY = statusTop + 11.dp
-                endY = statusTop + 44.dp
-            }
+            val startX = if (morphForward) 20.dp else 32.dp
+            val endX = if (morphForward) 32.dp else 20.dp
+            val startY = statusTop + if (morphForward) 44.dp else 11.dp
+            val endY = statusTop + if (morphForward) 11.dp else 44.dp
             val fontSize = if (morphForward) lerp(34.sp, 17.sp, p) else lerp(17.sp, 34.sp, p)
             val lineHeight = if (morphForward) lerp(41.sp, 22.sp, p) else lerp(22.sp, 41.sp, p)
             val color = if (morphForward) {
@@ -245,10 +244,11 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
             } else {
                 lerp(NotelyColors.Blue, NotelyColors.Label, p)
             }
+            // Ketebalan berubah di zona pudar akhir, supaya tidak terasa patah.
             val weight = if (morphForward) {
-                if (p < 0.5f) FontWeight.Bold else FontWeight.Normal
+                if (p < 0.85f) FontWeight.Bold else FontWeight.Normal
             } else {
-                if (p < 0.5f) FontWeight.Normal else FontWeight.Bold
+                if (p < 0.85f) FontWeight.Normal else FontWeight.Bold
             }
             BasicText(
                 text = text,
@@ -258,10 +258,12 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     fontWeight = weight,
                     color = color,
                 ),
-                modifier = Modifier.offset(
-                    x = lerp(startX, endX, p),
-                    y = lerp(startY, endY, p),
-                ),
+                modifier = Modifier
+                    .alpha(1f - settle)
+                    .offset(
+                        x = lerp(startX, endX, p),
+                        y = lerp(startY, endY, p),
+                    ),
             )
         }
     }
