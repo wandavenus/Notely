@@ -148,7 +148,9 @@ fun EditorScreen(
             state = textState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                // Ruang bawah besar: baris terakhir + karet tidak mepet
+                // tepi bawah layar / tepi atas keyboard.
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 48.dp),
             textStyle = NotelyText.EditorBody,
             cursorBrush = SolidColor(NotelyColors.Blue),
             outputTransformation = TitleOutputTransformation,
