@@ -17,4 +17,4 @@ Aplikasi catatan gaya iOS untuk Android, ditulis native dengan **Kotlin + Jetpac
 
 Build rilis hanya menghasilkan APK **arm64-v8a** (split ABI) agar ukurannya kecil, dan sementara ditandatangani kunci debug agar langsung bisa dipasang. Untuk publikasi, ganti dengan keystore rilis di `app/build.gradle.kts`.
 
-GitHub Actions (`.github/workflows/build.yml`) menjalankan tes unit lalu membangun APK debug + rilis pada setiap push ke `main` atau lewat *workflow dispatch*; hasilnya tersedia sebagai artefak `notely-apks`.
+GitHub Actions (`.github/workflows/build.yml`) menjalankan tes unit lalu membangun APK rilis pada setiap push ke `main` atau lewat *workflow dispatch*, dan mengunggahnya otomatis ke GitHub Release yang bertag sesuai `versionName`.

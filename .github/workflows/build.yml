@@ -27,20 +27,8 @@ jobs:
       - name: Tes unit
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      - name: Build APK debug
-        run: ./gradlew :app:assembleDebug --stacktrace
-
       - name: Build APK rilis (minify + R8 + shrink)
         run: ./gradlew :app:assembleRelease --stacktrace
-
-      - name: Unggah APK sebagai artefak Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: notely-apks
-          path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
 
       - name: Siapkan nama rilis
         id: rilis
