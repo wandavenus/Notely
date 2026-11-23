@@ -1,6 +1,15 @@
 package dev.wndavenz.notely.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
 import dev.wndavenz.notely.ui.screens.EditorScreen
@@ -42,6 +52,11 @@ sealed interface Destination {
     data object Settings : Destination
 }
 
+/** Layar teratas beserta kedalamannya di tumpukan, untuk arah animasi. */
+private data class NavTarget(val destination: Destination, val depth: Int)
+
+private const val NAV_ANIM_MS = 320
+
 /** Akar UI Notely: menukar layar teratas dari tumpukan navigasi. */
 @Composable
 fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
@@ -62,7 +77,26 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
             .fillMaxSize()
             .background(dev.wndavenz.notely.ui.theme.NotelyColors.Background),
     ) {
-        when (val destination = backStack.last()) {
+        // Transisi geser gaya iOS: maju = layar baru masuk dari kanan dan
+        // layar lama bergeser sepertiga ke kiri; mundur = kebalikannya.
+        AnimatedContent(
+            targetState = NavTarget(backStack.last(), backStack.lastIndex),
+            transitionSpec = {
+                val spec = tween<Float>(NAV_ANIM_MS, easing = FastOutSlowInEasing)
+                val slideSpec = tween<IntOffset>(NAV_ANIM_MS, easing = FastOutSlowInEasing)
+                if (targetState.depth > initialState.depth) {
+                    (slideInHorizontally(slideSpec) { it } + fadeIn(spec)).togetherWith(
+                        slideOutHorizontally(slideSpec) { -it / 3 } + fadeOut(spec),
+                    )
+                } else {
+                    (slideInHorizontally(slideSpec) { -it / 3 } + fadeIn(spec)).togetherWith(
+                        slideOutHorizontally(slideSpec) { it } + fadeOut(spec),
+                    )
+                }.using(SizeTransform(clip = false))
+            },
+            label = "navigasi",
+        ) { target ->
+            when (val destination = target.destination) {
             Destination.Folders -> FoldersScreen(
                 repository = repository,
                 onOpenList = { view -> navigate(Destination.NoteList(view)) },
@@ -105,6 +139,7 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                 repository = repository,
                 onBack = { pop() },
             )
+            }
         }
     }
 }
