@@ -80,7 +80,6 @@ fun EditorScreen(
     parentTitle: String,
     sessionKey: Long,
     onBack: () -> Unit,
-    backLabelAlpha: Float = 1f,
 ) {
     val viewModel: EditorViewModel = viewModel(
         key = "editor-$sessionKey",
@@ -118,7 +117,6 @@ fun EditorScreen(
         IosTopBar(
             backLabel = parentTitle,
             onBack = onBack,
-            backLabelAlpha = backLabelAlpha,
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IosIconButton(

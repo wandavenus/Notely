@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -72,7 +71,6 @@ fun FoldersScreen(
     onOpenSettings: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
     onCompose: (Long) -> Unit,
-    largeTitleAlpha: Float = 1f,
 ) {
     val viewModel: FoldersViewModel = viewModel(
         key = "folders",
@@ -118,9 +116,7 @@ fun FoldersScreen(
                 BasicText(
                     text = "Folder",
                     style = NotelyText.LargeTitle,
-                    modifier = Modifier
-                        .alpha(largeTitleAlpha)
-                        .padding(start = 4.dp, bottom = 10.dp),
+                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
                 )
                 IosSearchField(state = searchState, placeholder = "Telusuri")
                 Spacer(Modifier.height(14.dp))

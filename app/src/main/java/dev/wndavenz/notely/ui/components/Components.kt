@@ -22,7 +22,6 @@ import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -113,7 +112,6 @@ fun IosTopBar(
     backLabel: String? = null,
     onBack: (() -> Unit)? = null,
     centerTitle: String? = null,
-    backLabelAlpha: Float = 1f,
     trailing: @Composable () -> Unit = {},
 ) {
     Box(
@@ -141,7 +139,6 @@ fun IosTopBar(
                     BasicText(
                         text = backLabel,
                         style = NotelyText.Body.copy(color = NotelyColors.Blue),
-                        modifier = Modifier.alpha(backLabelAlpha),
                     )
                 }
             }

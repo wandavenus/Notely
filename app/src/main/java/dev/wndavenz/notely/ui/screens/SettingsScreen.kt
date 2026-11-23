@@ -38,7 +38,6 @@ import dev.wndavenz.notely.ui.viewModelFactory
 fun SettingsScreen(
     repository: NotesRepository,
     onBack: () -> Unit,
-    backLabelAlpha: Float = 1f,
 ) {
     val viewModel: SettingsViewModel = viewModel(
         key = "settings",
@@ -52,11 +51,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.statusBars),
     ) {
-        IosTopBar(
-            backLabel = "Folder",
-            onBack = onBack,
-            backLabelAlpha = backLabelAlpha,
-        )
+        IosTopBar(backLabel = "Folder", onBack = onBack)
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
