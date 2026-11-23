@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -55,6 +56,8 @@ fun NotesListScreen(
     onBack: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
     onCompose: (Long) -> Unit,
+    hideLargeTitle: Boolean = false,
+    hideBackLabel: Boolean = false,
 ) {
     val viewModel: NotesListViewModel = viewModel(
         key = "list-$view",
@@ -86,6 +89,7 @@ fun NotesListScreen(
         IosTopBar(
             backLabel = "Folder",
             onBack = onBack,
+            backLabelAlpha = if (hideBackLabel) 0f else 1f,
             trailing = {
                 if (isTrash && notes.isNotEmpty()) {
                     IosTextButton(
@@ -106,7 +110,9 @@ fun NotesListScreen(
                 BasicText(
                     text = titleOf(view),
                     style = NotelyText.LargeTitle,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
+                    modifier = Modifier
+                        .alpha(if (hideLargeTitle) 0f else 1f)
+                        .padding(start = 4.dp, bottom = 10.dp),
                 )
                 IosSearchField(state = searchState, placeholder = "Cari")
                 Spacer(Modifier.height(6.dp))
