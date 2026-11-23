@@ -105,5 +105,5 @@ object NotelyShapes {
     val FolderCardRadius = 9.dp
     val NoteCardRadius = 12.dp
     val SheetRadius = 12.dp
-    val SearchRadius = 10.dp
+    val SearchRadius = 9.dp
 }
