@@ -150,7 +150,11 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) runUpdateCheck(manual = false)
+            if (event == Lifecycle.Event.ON_RESUME &&
+                AppUpdater.autoCheckEnabled(context)
+            ) {
+                runUpdateCheck(manual = false)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

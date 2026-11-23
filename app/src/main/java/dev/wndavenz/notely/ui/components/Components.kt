@@ -1,5 +1,7 @@
 package dev.wndavenz.notely.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +23,7 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -153,6 +157,35 @@ fun IosTopBar(
         Box(modifier = Modifier.align(Alignment.CenterEnd)) {
             trailing()
         }
+    }
+}
+
+/** Saklar gaya iOS: jalur 51x31, kenop putih 27, hijau saat menyala. */
+@Composable
+fun IosSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val knobOffset by animateDpAsState(
+        targetValue = if (checked) 22.dp else 2.dp,
+        animationSpec = tween(durationMillis = 200),
+        label = "kenop saklar",
+    )
+    Box(
+        modifier = modifier
+            .size(width = 51.dp, height = 31.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (checked) NotelyColors.SwitchOn else NotelyColors.SwitchOff)
+            .clickable { onCheckedChange(!checked) },
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = knobOffset, y = 2.dp)
+                .size(27.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White),
+        )
     }
 }
 

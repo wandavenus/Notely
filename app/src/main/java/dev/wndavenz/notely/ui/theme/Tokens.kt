@@ -22,6 +22,8 @@ object NotelyColors {
     val TertiaryLabel = Color(0xFF636366)
     val Destructive = Color(0xFFFF453A)
     val SheetBackground = Color(0xFF26262C)
+    val SwitchOn = Color(0xFF34C759)
+    val SwitchOff = Color(0xFF39393D)
 }
 
 /** Font Inter (dibundel sebagai resource font). */

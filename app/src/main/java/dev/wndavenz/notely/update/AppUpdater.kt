@@ -37,6 +37,8 @@ object AppUpdater {
 
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/wandavenus/Notely/releases/latest"
+    private const val PREFS_NAME = "pembaruan"
+    private const val KEY_AUTO_CHECK = "cek_otomatis"
 
     /** Versi aplikasi yang sedang terpasang (dari PackageManager). */
     fun currentVersion(context: Context): String {
@@ -150,6 +152,18 @@ object AppUpdater {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+    }
+
+    /** Saklar periksa pembaruan otomatis (bawaan: nyala). */
+    fun autoCheckEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_CHECK, true)
+
+    fun setAutoCheckEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_AUTO_CHECK, enabled)
+            .apply()
     }
 
     /** Intent ke pengaturan izin pasang dari sumber tak dikenal untuk aplikasi ini. */

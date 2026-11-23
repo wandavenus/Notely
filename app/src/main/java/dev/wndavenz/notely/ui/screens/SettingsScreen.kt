@@ -35,6 +35,7 @@ import dev.wndavenz.notely.ui.SettingsViewModel
 import dev.wndavenz.notely.ui.components.IosConfirmDialog
 import dev.wndavenz.notely.ui.components.IosDivider
 import dev.wndavenz.notely.ui.components.IosGroupCard
+import dev.wndavenz.notely.ui.components.IosSwitch
 import dev.wndavenz.notely.ui.components.IosTopBar
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
@@ -55,6 +56,7 @@ fun SettingsScreen(
     var confirmEmptyTrash by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val installedVersion = remember(context) { AppUpdater.currentVersion(context) }
+    var autoCheck by remember { mutableStateOf(AppUpdater.autoCheckEnabled(context)) }
 
     Column(
         modifier = Modifier
@@ -130,6 +132,26 @@ fun SettingsScreen(
                             contentDescription = null,
                             colorFilter = ColorFilter.tint(NotelyColors.SecondaryLabel),
                             modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    IosDivider(insetStart = 14.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BasicText(
+                            text = "Periksa Pembaruan Otomatis",
+                            style = NotelyText.Body,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IosSwitch(
+                            checked = autoCheck,
+                            onCheckedChange = { enabled ->
+                                autoCheck = enabled
+                                AppUpdater.setAutoCheckEnabled(context, enabled)
+                            },
                         )
                     }
                 }
