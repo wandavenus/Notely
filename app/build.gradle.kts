@@ -14,8 +14,8 @@ android {
         applicationId = "dev.wndavenz.notely"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,14 +31,31 @@ android {
         }
     }
 
+    // Keystore rilis dibaca dari environment (di CI berasal dari GitHub
+    // Secrets). Bila tidak ada, build rilis jatuh ke kunci debug agar build
+    // lokal tetap bisa dipasang.
+    val releaseKeystoreFile = System.getenv("NOTELY_KEYSTORE_FILE")
+    signingConfigs {
+        if (releaseKeystoreFile != null) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile)
+                storePassword = System.getenv("NOTELY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NOTELY_KEY_ALIAS")
+                keyPassword = System.getenv("NOTELY_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // R8 + penyusutan resource agar APK rilis sekecil mungkin.
             isMinifyEnabled = true
             isShrinkResources = true
-            // Sementara ditandatangani kunci debug agar langsung bisa dipasang;
-            // ganti dengan keystore rilis sebelum publikasi.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

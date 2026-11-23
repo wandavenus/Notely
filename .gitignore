@@ -1,4 +1,6 @@
 *.iml
+*.jks
+/release/
 .gradle/
 .kotlin/
 local.properties

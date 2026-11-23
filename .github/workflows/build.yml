@@ -24,7 +24,17 @@ jobs:
       - name: Siapkan Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Siapkan keystore rilis
+        env:
+          NOTELY_KEYSTORE_BASE64: ${{ secrets.NOTELY_KEYSTORE_BASE64 }}
+        run: echo "$NOTELY_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/notely-release.jks"
+
       - name: Build APK rilis (minify + R8 + shrink)
+        env:
+          NOTELY_KEYSTORE_FILE: ${{ runner.temp }}/notely-release.jks
+          NOTELY_KEYSTORE_PASSWORD: ${{ secrets.NOTELY_KEYSTORE_PASSWORD }}
+          NOTELY_KEY_ALIAS: ${{ secrets.NOTELY_KEY_ALIAS }}
+          NOTELY_KEY_PASSWORD: ${{ secrets.NOTELY_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --stacktrace
 
       - name: Siapkan nama rilis
@@ -45,5 +55,5 @@ jobs:
           else
             gh release create "$TAG" "$FILE" \
               --title "Notely $TAG" \
-              --notes "Rilisan otomatis dari GitHub Actions. APK rilis arm64-v8a (minify + R8 + shrinkResources aktif, ditandatangani kunci debug agar langsung bisa dipasang)."
+              --notes "Rilisan otomatis dari GitHub Actions. APK rilis arm64-v8a (minify + R8 + shrinkResources aktif, ditandatangani kunci rilis Notely)."
           fi
