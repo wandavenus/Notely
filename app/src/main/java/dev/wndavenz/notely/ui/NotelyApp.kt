@@ -20,11 +20,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -43,6 +43,7 @@ import dev.wndavenz.notely.ui.screens.SettingsScreen
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /** Jenis daftar catatan yang sedang dibuka. */
 sealed interface ListView {
@@ -88,51 +89,58 @@ private fun largeTitleOf(destination: Destination): String? = when (destination)
 fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
     val backStack = remember { mutableStateListOf<Destination>(Destination.Folders) }
 
-    fun navigate(destination: Destination) {
-        backStack.add(destination)
-    }
-
-    fun pop() {
-        if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
-    }
-
-    BackHandler(enabled = backStack.size > 1) { pop() }
-
-    val currentTarget = NavTarget(backStack.last(), backStack.lastIndex)
-
     // Morph judul gaya iOS: judul besar layar asal berjalan ke bilah atas
     // layar tujuan (mengecil, naik, berubah warna menjadi label kembali),
-    // dan sebaliknya saat kembali. Kemajuan animasinya satu sumber di sini;
-    // judul asli di kedua layar disembunyikan selama morph berjalan.
+    // dan sebaliknya saat kembali. Morph dipicu langsung dari navigate/pop
+    // (bukan efek samping) supaya mulai di frame yang sama dengan geseran
+    // layar — telat satu frame saja, judul asli sempat terlihat penuh dan
+    // animasinya terasa berkedip.
     var morphText by remember { mutableStateOf<String?>(null) }
     var morphForward by remember { mutableStateOf(true) }
     var morphFrom by remember { mutableStateOf<Destination?>(null) }
     var morphTo by remember { mutableStateOf<Destination?>(null) }
     val morphProgress = remember { Animatable(1f) }
-    var previousTarget by remember { mutableStateOf<NavTarget?>(null) }
+    val morphScope = rememberCoroutineScope()
 
-    LaunchedEffect(currentTarget) {
-        val prev = previousTarget
-        previousTarget = currentTarget
-        if (prev != null && prev.destination != currentTarget.destination) {
-            val forward = currentTarget.depth > prev.depth
-            val text = largeTitleOf(if (forward) prev.destination else currentTarget.destination)
-            if (text != null) {
-                morphText = text
-                morphForward = forward
-                morphFrom = prev.destination
-                morphTo = currentTarget.destination
-                morphProgress.snapTo(0f)
-                morphProgress.animateTo(1f, tween(NAV_ANIM_MS, easing = FastOutSlowInEasing))
-            } else {
-                morphText = null
-            }
+    fun startMorph(from: Destination, to: Destination, forward: Boolean) {
+        val text = largeTitleOf(if (forward) from else to)
+        if (text == null) {
+            morphText = null
+            return
+        }
+        morphText = text
+        morphForward = forward
+        morphFrom = from
+        morphTo = to
+        morphScope.launch {
+            morphProgress.snapTo(0f)
+            morphProgress.animateTo(1f, tween(NAV_ANIM_MS, easing = FastOutSlowInEasing))
         }
     }
+
+    fun navigate(destination: Destination) {
+        val from = backStack.last()
+        backStack.add(destination)
+        startMorph(from, destination, forward = true)
+    }
+
+    fun pop() {
+        if (backStack.size > 1) {
+            val from = backStack.last()
+            backStack.removeAt(backStack.lastIndex)
+            startMorph(from, backStack.last(), forward = false)
+        }
+    }
+
+    BackHandler(enabled = backStack.size > 1) { pop() }
+
+    val currentTarget = NavTarget(backStack.last(), backStack.lastIndex)
     val morphActive = morphText != null && morphProgress.value < 1f
 
-    // Di 15% terakhir animasi, judul morph memudar dan judul asli di layar
-    // memudar masuk, supaya titik mendaratnya mulus tanpa lompatan.
+    // Di 15% terakhir animasi, teks morph memudar dan judul asli di layar
+    // yang DATANG memudar masuk, supaya titik mendaratnya mulus. Judul di
+    // layar yang PERGI tetap tersembunyi selama morph (teksnya dibawa
+    // oleh lapisan morph).
     val settle = if (morphActive) {
         ((morphProgress.value - 0.85f) / 0.15f).coerceIn(0f, 1f)
     } else {
@@ -141,12 +149,18 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
 
     fun largeTitleAlpha(destination: Destination): Float {
         val owner = if (morphForward) morphFrom else morphTo
-        return if (morphActive && destination == owner) settle else 1f
+        if (!morphActive || destination != owner) return 1f
+        // Maju: pemilik judul besar adalah layar yang pergi -> tetap 0.
+        // Mundur: pemiliknya layar yang datang -> pudar masuk di akhir.
+        return if (morphForward) 0f else settle
     }
 
     fun backLabelAlpha(destination: Destination): Float {
         val owner = if (morphForward) morphTo else morphFrom
-        return if (morphActive && destination == owner) settle else 1f
+        if (!morphActive || destination != owner) return 1f
+        // Maju: pemilik label adalah layar yang datang -> pudar masuk.
+        // Mundur: pemiliknya layar yang pergi -> tetap 0.
+        return if (morphForward) settle else 0f
     }
 
     BoxWithConstraints(
