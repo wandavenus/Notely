@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
       - name: Build APK rilis (minify + R8 + shrink)
         run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Unggah APK
+      - name: Unggah APK sebagai artefak Actions
         uses: actions/upload-artifact@v4
         with:
           name: notely-apks
@@ -41,3 +41,24 @@ jobs:
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Siapkan nama rilis
+        id: rilis
+        run: |
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "notely-v$VERSION-arm64-v8a.apk"
+
+      - name: Unggah APK ke GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.rilis.outputs.tag }}"
+          FILE="notely-${TAG}-arm64-v8a.apk"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" \
+              --title "Notely $TAG" \
+              --notes "Rilisan otomatis dari GitHub Actions. APK rilis arm64-v8a (minify + R8 + shrinkResources aktif, ditandatangani kunci debug agar langsung bisa dipasang)."
+          fi
