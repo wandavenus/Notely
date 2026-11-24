@@ -346,7 +346,7 @@ fun EmptyStateText(text: String, modifier: Modifier = Modifier) {
 }
 
 /** Lama tahan (ms) pada teks tengah bilah bawah untuk membuka brankas. */
-const val VAULT_HOLD_MS = 2_000L
+const val VAULT_HOLD_MS = 1_000L
 
 /** Bilah bawah: slot kiri, teks jumlah di tengah, slot kanan. */
 @Composable
@@ -370,12 +370,12 @@ fun IosBottomBar(
             if (centerText != null) {
                 // Area tahan dibuat jauh lebih besar dari teksnya (220 x 50 dp,
                 // selebar slot tengah bilah dan setinggi penuh bilah) supaya
-                // jari tidak gampang "jatuh" keluar area selama 2 detik —
+                // jari tidak gampang "jatuh" keluar area selama 1 detik —
                 // sebelumnya hitbox cuma sebesar teks 12sp + padding kecil.
                 val currentHold by rememberUpdatedState(onCenterHold)
                 val holdModifier = if (onCenterHold != null) {
                     // Pola kanonis detectTapGestures.onPress: tahan terpicu
-                    // hanya bila jari MASIH menekan saat batas 2 detik habis
+                    // hanya bila jari MASIH menekan saat batas 1 detik habis
                     // (hasil tunggu null = timeout). Loop awaitPointerEvent
                     // manual sebelumnya terbukti tidak terpicu di perangkat.
                     Modifier.pointerInput(Unit) {

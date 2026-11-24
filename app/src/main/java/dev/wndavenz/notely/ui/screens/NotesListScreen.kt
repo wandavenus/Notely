@@ -187,7 +187,7 @@ fun NotesListScreen(
         } else {
             IosBottomBar(
                 centerText = "${notes.size} Catatan",
-                // Pintu brankas: tahan teks jumlah catatan selama 2 detik
+                // Pintu brankas: tahan teks jumlah catatan selama 1 detik
                 // (hanya di daftar biasa, bukan di brankas / sampah).
                 onCenterHold = if (isSecret) {
                     null

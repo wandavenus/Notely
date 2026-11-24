@@ -1,6 +1,8 @@
 package dev.wndavenz.notely.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -22,6 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,7 +37,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
+import com.composables.icons.lucide.Delete
+import com.composables.icons.lucide.Lucide
 import dev.wndavenz.notely.vault.VaultStore
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val PIN_LENGTH = 4
 
@@ -54,6 +64,8 @@ fun PinEntryDialog(
     var phase by remember {
         mutableStateOf(if (isSetup) PinPhase.SETUP_FIRST else PinPhase.ENTER)
     }
+    var confirmReset by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     var pin by remember { mutableStateOf("") }
     var firstPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -107,7 +119,35 @@ fun PinEntryDialog(
                 onClick = onDismiss,
                 modifier = Modifier.align(Alignment.Start),
             )
-            Spacer(Modifier.height(24.dp))
+            // Tombol reset PIN yang tidak kelihatan: area kosong tepat di
+            // atas judul, ditahan 1 detik untuk memicu reset (mode masuk
+            // saja; mode buat PIN menampilkan ruang kosong yang sama agar
+            // tata letak tidak bergeser).
+            if (phase == PinPhase.ENTER) {
+                Box(
+                    modifier = Modifier
+                        .width(220.dp)
+                        .height(48.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    val releasedEarly =
+                                        withTimeoutOrNull(VAULT_HOLD_MS) {
+                                            tryAwaitRelease()
+                                        }
+                                    if (releasedEarly == null) {
+                                        haptic.performHapticFeedback(
+                                            HapticFeedbackType.LongPress,
+                                        )
+                                        confirmReset = true
+                                    }
+                                },
+                            )
+                        },
+                )
+            } else {
+                Spacer(Modifier.height(48.dp))
+            }
             BasicText(
                 text = when (phase) {
                     PinPhase.ENTER -> "Masukkan PIN"
@@ -189,14 +229,41 @@ fun PinEntryDialog(
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            BasicText(
-                                text = key,
-                                style = NotelyText.LargeTitle.copy(fontSize = 28.sp),
-                            )
+                            if (key == "⌫") {
+                                Image(
+                                    imageVector = Lucide.Delete,
+                                    contentDescription = "Hapus",
+                                    colorFilter = ColorFilter.tint(NotelyColors.Label),
+                                    modifier = Modifier.size(30.dp),
+                                )
+                            } else {
+                                BasicText(
+                                    text = key,
+                                    style = NotelyText.LargeTitle.copy(fontSize = 28.sp),
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (confirmReset) {
+        IosConfirmDialog(
+            title = "Reset PIN?",
+            message = "PIN lama akan dihapus dan kamu bisa membuat PIN baru. " +
+                "Catatan di dalam brankas tidak ikut terhapus.",
+            confirmLabel = "Reset",
+            onConfirm = {
+                VaultStore.clearPin(context)
+                pin = ""
+                firstPin = ""
+                error = null
+                phase = PinPhase.SETUP_FIRST
+                confirmReset = false
+            },
+            onDismiss = { confirmReset = false },
+        )
     }
 }

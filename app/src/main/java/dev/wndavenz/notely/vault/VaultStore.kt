@@ -34,6 +34,14 @@ object VaultStore {
             .apply()
     }
 
+    /** Hapus PIN tersimpan (reset); catatan rahasia tidak ikut terhapus. */
+    fun clearPin(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_SALT)
+            .remove(KEY_HASH)
+            .apply()
+    }
+
     fun verify(context: Context, pin: String): Boolean {
         val saltB64 = prefs(context).getString(KEY_SALT, null) ?: return false
         val hashB64 = prefs(context).getString(KEY_HASH, null) ?: return false
