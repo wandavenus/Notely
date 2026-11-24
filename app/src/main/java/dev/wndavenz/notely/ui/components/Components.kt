@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -368,8 +369,13 @@ fun IosBottomBar(
         ) {
             Box(Modifier.align(Alignment.CenterStart)) { leading() }
             if (centerText != null) {
+                // Area tahan dibuat jauh lebih besar dari teksnya (220 x 50 dp,
+                // selebar slot tengah bilah dan setinggi penuh bilah) supaya
+                // jari tidak gampang "jatuh" keluar area selama 2 detik —
+                // sebelumnya hitbox cuma sebesar teks 12sp + padding kecil.
+                val currentHold by rememberUpdatedState(onCenterHold)
                 val holdModifier = if (onCenterHold != null) {
-                    Modifier.pointerInput(onCenterHold) {
+                    Modifier.pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
                                 val first = awaitPointerEvent(PointerEventPass.Initial)
@@ -390,7 +396,7 @@ fun IosBottomBar(
                                     // Masih ditekan saat batas waktu habis.
                                 }
                                 if (!released) {
-                                    onCenterHold()
+                                    currentHold?.invoke()
                                     haptic.performHapticFeedback(
                                         HapticFeedbackType.LongPress,
                                     )
@@ -407,14 +413,19 @@ fun IosBottomBar(
                 } else {
                     Modifier
                 }
-                BasicText(
-                    text = centerText,
-                    style = NotelyText.Caption.copy(color = NotelyColors.Label),
+                Box(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .then(holdModifier)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+                        .width(220.dp)
+                        .height(50.dp)
+                        .then(holdModifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicText(
+                        text = centerText,
+                        style = NotelyText.Caption.copy(color = NotelyColors.Label),
+                    )
+                }
             }
             Box(Modifier.align(Alignment.CenterEnd)) { trailing() }
         }
