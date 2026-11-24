@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +34,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
@@ -53,8 +53,7 @@ import dev.wndavenz.notely.ui.theme.NotelyShapes
 import dev.wndavenz.notely.ui.theme.NotelyText
 import dev.wndavenz.notely.utils.DateFormat
 import dev.wndavenz.notely.utils.NoteText
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Garis pemisah tipis gaya iOS, bisa diberi inden awal. */
 @Composable
@@ -375,40 +374,24 @@ fun IosBottomBar(
                 // sebelumnya hitbox cuma sebesar teks 12sp + padding kecil.
                 val currentHold by rememberUpdatedState(onCenterHold)
                 val holdModifier = if (onCenterHold != null) {
+                    // Pola kanonis detectTapGestures.onPress: tahan terpicu
+                    // hanya bila jari MASIH menekan saat batas 2 detik habis
+                    // (hasil tunggu null = timeout). Loop awaitPointerEvent
+                    // manual sebelumnya terbukti tidak terpicu di perangkat.
                     Modifier.pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val first = awaitPointerEvent(PointerEventPass.Initial)
-                                if (first.changes.none { it.pressed }) continue
-                                var released = false
-                                try {
-                                    withTimeout(VAULT_HOLD_MS) {
-                                        while (true) {
-                                            val event =
-                                                awaitPointerEvent(PointerEventPass.Initial)
-                                            if (event.changes.none { it.pressed }) {
-                                                released = true
-                                                break
-                                            }
-                                        }
-                                    }
-                                } catch (e: TimeoutCancellationException) {
-                                    // Masih ditekan saat batas waktu habis.
+                        detectTapGestures(
+                            onPress = {
+                                val releasedEarly = withTimeoutOrNull(VAULT_HOLD_MS) {
+                                    tryAwaitRelease()
                                 }
-                                if (!released) {
+                                if (releasedEarly == null) {
                                     currentHold?.invoke()
                                     haptic.performHapticFeedback(
                                         HapticFeedbackType.LongPress,
                                     )
-                                    // Tunggu sampai jari diangkat.
-                                    while (true) {
-                                        val event =
-                                            awaitPointerEvent(PointerEventPass.Initial)
-                                        if (event.changes.none { it.pressed }) break
-                                    }
                                 }
-                            }
-                        }
+                            },
+                        )
                     }
                 } else {
                     Modifier
