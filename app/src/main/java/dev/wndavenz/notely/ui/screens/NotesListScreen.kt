@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +41,7 @@ import dev.wndavenz.notely.ui.components.IosTextButton
 import dev.wndavenz.notely.ui.components.IosTopBar
 import dev.wndavenz.notely.ui.components.NoteCard
 import dev.wndavenz.notely.ui.components.NoteSectionHeader
+import dev.wndavenz.notely.ui.components.PinEntryDialog
 import dev.wndavenz.notely.ui.components.SheetAction
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
@@ -47,6 +49,7 @@ import dev.wndavenz.notely.ui.titleOf
 import dev.wndavenz.notely.ui.viewModelFactory
 import dev.wndavenz.notely.utils.NoteDateGroup
 import dev.wndavenz.notely.utils.dateGroupOf
+import dev.wndavenz.notely.vault.VaultStore
 
 /** Daftar catatan di dalam folder, tampilan Tersimpan, atau Baru Dihapus. */
 @Composable
@@ -55,7 +58,9 @@ fun NotesListScreen(
     view: ListView,
     onBack: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
-    onCompose: (Long) -> Unit,
+    onCompose: (folderId: Long, secret: Boolean) -> Unit,
+    onOpenSecret: () -> Unit,
+    onOpenSecretTrash: () -> Unit,
 ) {
     val viewModel: NotesListViewModel = viewModel(
         key = "list-$view",
@@ -75,8 +80,12 @@ fun NotesListScreen(
 
     var actionNote by remember { mutableStateOf<NoteEntity?>(null) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
+    var showPin by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    val isTrash = view is ListView.Trash
+    val isTrash = view is ListView.Trash || view is ListView.SecretTrash
+    val isSecret = view is ListView.Secret
+    val isSecretTrash = view is ListView.SecretTrash
     val composeFolderId = (view as? ListView.Folder)?.id ?: 1L
 
     Column(
@@ -86,7 +95,11 @@ fun NotesListScreen(
             .imePadding(),
     ) {
         IosTopBar(
-            backLabel = "Folder",
+            backLabel = when (view) {
+                ListView.Secret -> "Catatan"
+                ListView.SecretTrash -> "Rahasia"
+                else -> "Folder"
+            },
             onBack = onBack,
             trailing = {
                 if (isTrash && notes.isNotEmpty()) {
@@ -94,6 +107,11 @@ fun NotesListScreen(
                         text = "Kosongkan",
                         onClick = { confirmEmptyTrash = true },
                         color = NotelyColors.Destructive,
+                    )
+                } else if (isSecret) {
+                    IosTextButton(
+                        text = "Sampah",
+                        onClick = onOpenSecretTrash,
                     )
                 }
             },
@@ -169,11 +187,18 @@ fun NotesListScreen(
         } else {
             IosBottomBar(
                 centerText = "${notes.size} Catatan",
+                // Pintu brankas: tahan teks jumlah catatan selama 2 detik
+                // (hanya di daftar biasa, bukan di brankas / sampah).
+                onCenterHold = if (isSecret) {
+                    null
+                } else {
+                    { showPin = true }
+                },
                 trailing = {
                     IosIconButton(
                         icon = Lucide.SquarePen,
                         contentDescription = "Catatan baru",
-                        onClick = { onCompose(composeFolderId) },
+                        onClick = { onCompose(composeFolderId, isSecret) },
                     )
                 },
             )
@@ -203,6 +228,16 @@ fun NotesListScreen(
                         viewModel.setPinned(note, !note.pinned)
                         actionNote = null
                     },
+                    SheetAction(
+                        label = if (isSecret) {
+                            "Keluarkan dari Rahasia"
+                        } else {
+                            "Pindahkan ke Rahasia"
+                        },
+                    ) {
+                        viewModel.setSecret(note, !isSecret)
+                        actionNote = null
+                    },
                     SheetAction(label = "Hapus", color = NotelyColors.Destructive) {
                         viewModel.moveToTrash(note)
                         actionNote = null
@@ -211,6 +246,17 @@ fun NotesListScreen(
                 onDismiss = { actionNote = null },
             )
         }
+    }
+
+    if (showPin) {
+        PinEntryDialog(
+            isSetup = !VaultStore.isPinSet(context),
+            onSuccess = {
+                showPin = false
+                onOpenSecret()
+            },
+            onDismiss = { showPin = false },
+        )
     }
 
     if (confirmEmptyTrash) {

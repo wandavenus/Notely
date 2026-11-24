@@ -31,6 +31,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +52,8 @@ import dev.wndavenz.notely.ui.theme.NotelyShapes
 import dev.wndavenz.notely.ui.theme.NotelyText
 import dev.wndavenz.notely.utils.DateFormat
 import dev.wndavenz.notely.utils.NoteText
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 /** Garis pemisah tipis gaya iOS, bisa diberi inden awal. */
 @Composable
@@ -339,14 +345,19 @@ fun EmptyStateText(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/** Lama tahan (ms) pada teks tengah bilah bawah untuk membuka brankas. */
+const val VAULT_HOLD_MS = 2_000L
+
 /** Bilah bawah: slot kiri, teks jumlah di tengah, slot kanan. */
 @Composable
 fun IosBottomBar(
     modifier: Modifier = Modifier,
     centerText: String? = null,
+    onCenterHold: (() -> Unit)? = null,
     leading: @Composable () -> Unit = {},
     trailing: @Composable () -> Unit = {},
 ) {
+    val haptic = LocalHapticFeedback.current
     Column(modifier = modifier.fillMaxWidth()) {
         IosDivider()
         Box(
@@ -357,10 +368,52 @@ fun IosBottomBar(
         ) {
             Box(Modifier.align(Alignment.CenterStart)) { leading() }
             if (centerText != null) {
+                val holdModifier = if (onCenterHold != null) {
+                    Modifier.pointerInput(onCenterHold) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val first = awaitPointerEvent(PointerEventPass.Initial)
+                                if (first.changes.none { it.pressed }) continue
+                                var released = false
+                                try {
+                                    withTimeout(VAULT_HOLD_MS) {
+                                        while (true) {
+                                            val event =
+                                                awaitPointerEvent(PointerEventPass.Initial)
+                                            if (event.changes.none { it.pressed }) {
+                                                released = true
+                                                break
+                                            }
+                                        }
+                                    }
+                                } catch (e: TimeoutCancellationException) {
+                                    // Masih ditekan saat batas waktu habis.
+                                }
+                                if (!released) {
+                                    onCenterHold()
+                                    haptic.performHapticFeedback(
+                                        HapticFeedbackType.LongPress,
+                                    )
+                                    // Tunggu sampai jari diangkat.
+                                    while (true) {
+                                        val event =
+                                            awaitPointerEvent(PointerEventPass.Initial)
+                                        if (event.changes.none { it.pressed }) break
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                }
                 BasicText(
                     text = centerText,
                     style = NotelyText.Caption.copy(color = NotelyColors.Label),
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .then(holdModifier)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
             Box(Modifier.align(Alignment.CenterEnd)) { trailing() }

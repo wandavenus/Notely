@@ -1,5 +1,6 @@
 package dev.wndavenz.notely.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -25,6 +26,8 @@ data class NoteEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null,
+    /** Catatan rahasia (brankas): tersembunyi dari semua daftar biasa. */
+    @ColumnInfo(defaultValue = "0") val secret: Boolean = false,
 )
 
 /** Folder beserta jumlah catatan aktif (bukan sampah) di dalamnya. */

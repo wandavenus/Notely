@@ -88,7 +88,11 @@ class NotesListViewModel(
         is ListView.Folder -> repository.notesInFolder(view.id)
         ListView.Pinned -> repository.pinnedNotes()
         ListView.Trash -> repository.trashedNotes()
+        ListView.Secret -> repository.secretNotes()
+        ListView.SecretTrash -> repository.secretTrashedNotes()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val isSecretTrash = view is ListView.SecretTrash
 
     fun setPinned(note: NoteEntity, pinned: Boolean) {
         viewModelScope.launch { repository.setPinned(note.id, pinned) }
@@ -106,8 +110,14 @@ class NotesListViewModel(
         viewModelScope.launch { repository.deleteForever(note.id) }
     }
 
+    fun setSecret(note: NoteEntity, secret: Boolean) {
+        viewModelScope.launch { repository.setSecret(note.id, secret) }
+    }
+
     fun emptyTrash() {
-        viewModelScope.launch { repository.emptyTrash() }
+        viewModelScope.launch {
+            if (isSecretTrash) repository.emptySecretTrash() else repository.emptyTrash()
+        }
     }
 }
 
@@ -125,6 +135,7 @@ class EditorViewModel(
     private val appScope: CoroutineScope,
     initialNoteId: Long?,
     private val folderId: Long,
+    private val secret: Boolean = false,
 ) : ViewModel() {
 
     private var noteId: Long? = initialNoteId
@@ -170,7 +181,7 @@ class EditorViewModel(
         when {
             id == null -> {
                 if (body.isNotBlank()) {
-                    noteId = repository.createNote(folderId, body)
+                    noteId = repository.createNote(folderId, body, secret)
                     createdInSession = true
                     _state.update { it.copy(updatedAt = System.currentTimeMillis()) }
                 }

@@ -78,6 +78,7 @@ fun EditorScreen(
     appScope: CoroutineScope,
     noteId: Long?,
     folderId: Long,
+    secret: Boolean = false,
     parentTitle: String,
     sessionKey: Long,
     onBack: () -> Unit,
@@ -85,7 +86,7 @@ fun EditorScreen(
     val viewModel: EditorViewModel = viewModel(
         key = "editor-$sessionKey",
         factory = viewModelFactory {
-            EditorViewModel(repository, appScope, noteId, folderId)
+            EditorViewModel(repository, appScope, noteId, folderId, secret)
         },
     )
     val ui by viewModel.state.collectAsStateWithLifecycle()

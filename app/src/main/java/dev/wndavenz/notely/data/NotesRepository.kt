@@ -45,12 +45,26 @@ class NotesRepository(private val database: NotelyDatabase) {
 
     fun searchNotes(query: String): Flow<List<NoteEntity>> = noteDao.search(query)
 
+    fun secretNotes(): Flow<List<NoteEntity>> = noteDao.observeSecret()
+
+    fun secretTrashedNotes(): Flow<List<NoteEntity>> = noteDao.observeSecretTrash()
+
+    suspend fun setSecret(id: Long, secret: Boolean) = noteDao.setSecret(id, secret)
+
+    suspend fun emptySecretTrash() = noteDao.emptySecretTrash()
+
     suspend fun noteById(id: Long): NoteEntity? = noteDao.getById(id)
 
-    suspend fun createNote(folderId: Long, body: String): Long {
+    suspend fun createNote(folderId: Long, body: String, secret: Boolean = false): Long {
         val now = System.currentTimeMillis()
         return noteDao.insert(
-            NoteEntity(folderId = folderId, body = body, createdAt = now, updatedAt = now),
+            NoteEntity(
+                folderId = folderId,
+                body = body,
+                createdAt = now,
+                updatedAt = now,
+                secret = secret,
+            ),
         )
     }
 

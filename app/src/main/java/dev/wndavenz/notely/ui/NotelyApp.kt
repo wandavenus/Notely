@@ -47,12 +47,16 @@ sealed interface ListView {
     data class Folder(val id: Long, val name: String) : ListView
     data object Pinned : ListView
     data object Trash : ListView
+    data object Secret : ListView
+    data object SecretTrash : ListView
 }
 
 fun titleOf(view: ListView): String = when (view) {
     is ListView.Folder -> view.name
     ListView.Pinned -> "Tersimpan"
     ListView.Trash -> "Baru Dihapus"
+    ListView.Secret -> "Rahasia"
+    ListView.SecretTrash -> "Baru Dihapus"
 }
 
 /** Tujuan navigasi aplikasi (tumpukan kembali dikelola manual, satu Activity). */
@@ -63,6 +67,7 @@ sealed interface Destination {
         val noteId: Long?,
         val folderId: Long,
         val parentTitle: String,
+        val secret: Boolean = false,
         val sessionKey: Long = System.nanoTime(),
     ) : Destination
     data object Settings : Destination
@@ -155,6 +160,20 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
             ) {
                 runUpdateCheck(manual = false)
             }
+            if (event == Lifecycle.Event.ON_STOP) {
+                // Brankas terkunci begitu aplikasi ke latar: buang semua
+                // layar rahasia (dan editor di atasnya) dari tumpukan.
+                val vaultIndex = backStack.indexOfFirst { destination ->
+                    destination is Destination.NoteList &&
+                        (destination.view is ListView.Secret ||
+                            destination.view is ListView.SecretTrash)
+                }
+                if (vaultIndex >= 0) {
+                    while (backStack.size > vaultIndex) {
+                        backStack.removeAt(backStack.lastIndex)
+                    }
+                }
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -190,7 +209,11 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     onOpenList = { view -> navigate(Destination.NoteList(view)) },
                     onOpenSettings = { navigate(Destination.Settings) },
                     onOpenEditor = { note ->
-                        navigate(Destination.Editor(note.id, note.folderId, "Folder"))
+                        navigate(
+                            Destination.Editor(
+                                note.id, note.folderId, "Folder", note.secret,
+                            ),
+                        )
                     },
                     onCompose = { folderId ->
                         navigate(Destination.Editor(null, folderId, "Folder"))
@@ -203,13 +226,26 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     onBack = { pop() },
                     onOpenEditor = { note: NoteEntity ->
                         navigate(
-                            Destination.Editor(note.id, note.folderId, titleOf(destination.view)),
+                            Destination.Editor(
+                                note.id,
+                                note.folderId,
+                                titleOf(destination.view),
+                                note.secret,
+                            ),
                         )
                     },
-                    onCompose = { folderId ->
+                    onCompose = { folderId, secret ->
                         navigate(
-                            Destination.Editor(null, folderId, titleOf(destination.view)),
+                            Destination.Editor(
+                                null, folderId, titleOf(destination.view), secret,
+                            ),
                         )
+                    },
+                    onOpenSecret = {
+                        navigate(Destination.NoteList(ListView.Secret))
+                    },
+                    onOpenSecretTrash = {
+                        navigate(Destination.NoteList(ListView.SecretTrash))
                     },
                 )
 
@@ -218,6 +254,7 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     appScope = appScope,
                     noteId = destination.noteId,
                     folderId = destination.folderId,
+                    secret = destination.secret,
                     parentTitle = destination.parentTitle,
                     sessionKey = destination.sessionKey,
                     onBack = { pop() },
