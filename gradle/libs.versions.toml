@@ -6,7 +6,7 @@ composeBom = "2026.11.01"
 activityCompose = "1.13.0"
 lifecycle = "2.11.1"
 room = "2.8.5"
-coroutines = "1.10.2"
+coroutines = "1.11.0"
 iconsLucide = "1.1.0"
 junit = "4.13.2"
 
