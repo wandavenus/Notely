@@ -56,7 +56,6 @@ import dev.wndavenz.notely.ui.components.IosBottomBar
 import dev.wndavenz.notely.ui.components.IosSearchField
 import dev.wndavenz.notely.ui.components.IosTopBar
 import dev.wndavenz.notely.ui.theme.NotelyColors
-import dev.wndavenz.notely.ui.theme.NotelyShapes
 import dev.wndavenz.notely.ui.theme.NotelyText
 import dev.wndavenz.notely.ui.viewModelFactory
 import dev.wndavenz.notely.utils.DateFormat
@@ -153,7 +152,7 @@ fun DocumentsScreen(
                         Spacer(Modifier.height(18.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(9.dp))
                                 .background(NotelyColors.Blue)
                                 .clickable {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -223,7 +222,7 @@ private fun DocumentCard(document: DocumentFile, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(NotelyShapes.NoteCardRadius))
+            .clip(RoundedCornerShape(9.dp))
             .background(NotelyColors.Card)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 11.dp),
