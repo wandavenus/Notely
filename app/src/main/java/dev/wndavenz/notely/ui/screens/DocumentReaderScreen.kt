@@ -46,7 +46,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -640,8 +639,10 @@ private fun TextSizeDialog(
 /**
  * Viewer TXT mode bentang (Pembungkus Kata mati): teks digambar sebagai
  * SATU node supaya gulir horizontal menggeser semua baris serentak.
- * Kolom nomor diam di kiri, ikut tergulir vertikal lewat offset dari
- * keadaan gulir konten; pembatas vertikal diam setinggi layar di tengah.
+ * Nomor baris ikut di dalam aliran gulir vertikal yang sama dengan teks
+ * (BUKAN digeser manual lewat offset — cara lama bikin teks nomor cuma
+ * kelayout setinggi satu layar, jadi nomor berhenti di tengah file),
+ * dan pembatas digambar di belakang baris setinggi isi penuh.
  */
 @Composable
 private fun TxtNoWrapView(
@@ -661,12 +662,23 @@ private fun TxtNoWrapView(
         (1..lines.size).joinToString("\n")
     }
     val horizontalState = rememberScrollState()
-    Row(modifier = modifier.padding(end = 12.dp)) {
-        Box(
-            Modifier
-                .width(30.dp)
-                .fillMaxHeight()
-                .clipToBounds(),
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
+            .padding(end = 12.dp),
+    ) {
+        Row(
+            Modifier.drawBehind {
+                // Pembatas vertikal nomor <-> teks, setinggi seluruh isi.
+                val x = 30.dp.toPx() + 8.dp.toPx()
+                drawLine(
+                    color = Color.White.copy(alpha = 0.7f),
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, size.height),
+                    strokeWidth = 0.3.dp.toPx(),
+                )
+            },
         ) {
             BasicText(
                 text = numbersText,
@@ -675,34 +687,21 @@ private fun TxtNoWrapView(
                     fontSize = 13.sp * textScale,
                     textAlign = TextAlign.End,
                 ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .offset { IntOffset(0, -scrollState.value) },
+                modifier = Modifier.width(30.dp),
             )
-        }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier
-                .width(0.3.dp)
-                .fillMaxHeight()
-                .background(Color.White.copy(alpha = 0.7f)),
-        )
-        Spacer(Modifier.width(10.dp))
-        Box(
-            Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .verticalScroll(scrollState)
-                .horizontalScroll(horizontalState),
-        ) {
-            Column {
+            Spacer(Modifier.width(19.dp))
+            Box(
+                Modifier
+                    .weight(1f)
+                    .horizontalScroll(horizontalState),
+            ) {
                 BasicText(text = fullText, style = bodyStyle, softWrap = false)
-                if (truncated) {
-                    TruncatedNote()
-                }
-                Spacer(Modifier.height(32.dp))
             }
         }
+        if (truncated) {
+            TruncatedNote()
+        }
+        Spacer(Modifier.height(32.dp))
     }
 }
 
