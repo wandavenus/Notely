@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -258,8 +259,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 .height(0.3.dp)
                 .background(Color.White.copy(alpha = 0.7f)),
         )
-        // Napas antara navbar dan isi: teks jangan mepet ke pembatas.
-        Spacer(Modifier.height(12.dp))
+
 
         if (searchOpen) {
             Row(
@@ -385,6 +385,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
             ) {
                 LazyColumn(
                     state = listState,
+                    contentPadding = PaddingValues(top = 12.dp),
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 20.dp),
@@ -415,6 +416,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
             else -> if (wordWrap) {
                 LazyColumn(
                     state = listState,
+                    contentPadding = PaddingValues(top = 12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .padding(start = 0.dp, end = 12.dp),
@@ -773,6 +775,9 @@ private fun TxtNoWrapView(
             .verticalScroll(scrollState)
             .padding(end = 12.dp),
     ) {
+        // Napas di ATAS isi teks (di dalam area gulir, bukan pita diam
+        // di bawah pembatas navbar).
+        Spacer(Modifier.height(12.dp))
         Row(
             Modifier.drawBehind {
                 // Pembatas vertikal nomor <-> teks, setinggi seluruh isi.
