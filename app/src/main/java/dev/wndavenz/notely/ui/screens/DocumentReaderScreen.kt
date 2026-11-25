@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +56,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -94,6 +96,8 @@ import dev.wndavenz.notely.ui.viewModelFactory
 import dev.wndavenz.notely.utils.Markdown
 import dev.wndavenz.notely.utils.MarkdownInline
 import dev.wndavenz.notely.utils.MdBlock
+import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -116,11 +120,18 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     // Gulir horizontal BERSAMA untuk mode bentang Markdown: semua blok
     // digeser satu offset yang sama (scroll per blok bikin cuma blok yang
     // disentuh yang bergerak). Lebar isi terlebar dilaporkan tiap blok.
-    var mdScrollX by remember { mutableFloatStateOf(0f) }
+    // Offset disimpan sebagai State dan dibaca di FASE LAYOUT (di dalam
+    // lambda offset tiap blok), bukan sebagai parameter komposisi —
+    // supaya geseran tidak memicu komposisi ulang semua blok (itu yang
+    // bikin geser menyamping terasa kaku; gulir vertikal LazyColumn
+    // mulus karena memang bekerja di fase layout).
+    val mdScrollXState = remember { mutableFloatStateOf(0f) }
     var mdMaxWidthPx by remember { mutableIntStateOf(0) }
     var mdViewportWidthPx by remember { mutableIntStateOf(0) }
+    var mdFlingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     LaunchedEffect(wordWrap, document.path) {
-        mdScrollX = 0f
+        mdFlingJob?.cancel()
+        mdScrollXState.floatValue = 0f
         mdMaxWidthPx = 0
     }
     var showMenu by remember { mutableStateOf(false) }
@@ -316,14 +327,59 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                     }
                     .pointerInput(wordWrap) {
                         if (!wordWrap) {
-                            detectHorizontalDragGestures { change, dragAmount ->
-                                val maxScroll = (mdMaxWidthPx - mdViewportWidthPx)
-                                    .coerceAtLeast(0)
-                                    .toFloat()
-                                mdScrollX = (mdScrollX - dragAmount)
-                                    .coerceIn(0f, maxScroll)
-                                change.consume()
-                            }
+                            val velocityTracker = VelocityTracker()
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    mdFlingJob?.cancel()
+                                    velocityTracker.resetTracking()
+                                },
+                                onDragEnd = {
+                                    // Lemparan (fling) seperti gulir vertikal:
+                                    // habis dilepas, isi meluncur melambat
+                                    // sendiri mengikuti kecepatan jari.
+                                    val velocityX = velocityTracker
+                                        .calculateVelocity()
+                                        .x
+                                    if (abs(velocityX) > 60f) {
+                                        mdFlingJob = scope.launch {
+                                            var velocity = -velocityX
+                                            var lastFrame = withFrameNanos { it }
+                                            while (abs(velocity) > 24f) {
+                                                val now = withFrameNanos { it }
+                                                val dt = (now - lastFrame) / 1e9f
+                                                lastFrame = now
+                                                if (dt <= 0f) continue
+                                                val maxScroll = (
+                                                    mdMaxWidthPx - mdViewportWidthPx
+                                                    )
+                                                    .coerceAtLeast(0)
+                                                    .toFloat()
+                                                val next = mdScrollXState.floatValue +
+                                                    velocity * dt
+                                                mdScrollXState.floatValue =
+                                                    next.coerceIn(0f, maxScroll)
+                                                if (next != mdScrollXState.floatValue) {
+                                                    break
+                                                }
+                                                velocity *= exp(-3.2f * dt)
+                                            }
+                                        }
+                                    }
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    velocityTracker.addPosition(
+                                        change.uptimeMillis,
+                                        change.position,
+                                    )
+                                    val maxScroll = (mdMaxWidthPx - mdViewportWidthPx)
+                                        .coerceAtLeast(0)
+                                        .toFloat()
+                                    mdScrollXState.floatValue =
+                                        (mdScrollXState.floatValue - dragAmount)
+                                            .coerceIn(0f, maxScroll)
+                                    change.consume()
+                                },
+                            )
                         }
                     },
             ) {
@@ -339,7 +395,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                             query = query,
                             wordWrap = wordWrap,
                             textScale = textScale,
-                            noWrapScrollX = mdScrollX,
+                            scrollXState = mdScrollXState,
                             onContentWidth = { width ->
                                 // Batas waras: ukuran rusak (mis. tak
                                 // terbatas) jangan sampai jadi batas geser.
@@ -788,7 +844,8 @@ private fun MarkdownBlock(
     query: String,
     wordWrap: Boolean,
     textScale: Float,
-    noWrapScrollX: Float = 0f,
+    scrollXState: androidx.compose.runtime.State<Float> =
+        androidx.compose.runtime.mutableFloatStateOf(0f),
     onContentWidth: (Int) -> Unit = {},
 ) {
     if (wordWrap) {
@@ -797,7 +854,9 @@ private fun MarkdownBlock(
         // Mode bentang: blok diukur selebar isi aslinya lalu digeser
         // dengan offset bersama satu dokumen (dipotong di tepi item),
         // jadi semua blok bergerak serentak pas digeser menyamping.
-        val maxScrollX = (noWrapScrollX).coerceAtLeast(0f)
+        // Nilai offset dibaca di dalam lambda offset (fase layout) —
+        // geseran cuma menata ulang posisi, TANPA komposisi ulang,
+        // makanya bisa semulus gulir vertikal.
         Box(
             Modifier
                 .fillMaxWidth()
@@ -810,7 +869,12 @@ private fun MarkdownBlock(
                     // ketengah dan yang kelihatan cuma potongan tengahnya,
                     // awal barisnya hilang (tampilan "ngacak").
                     .wrapContentWidth(unbounded = true, align = Alignment.Start)
-                    .offset { IntOffset(-maxScrollX.roundToInt(), 0) }
+                    .offset {
+                        IntOffset(
+                            -scrollXState.value.coerceAtLeast(0f).roundToInt(),
+                            0,
+                        )
+                    }
                     .onSizeChanged { onContentWidth(it.width) },
             ) {
                 MarkdownBlockContent(block, query, wordWrap, textScale)
