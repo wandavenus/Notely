@@ -718,13 +718,38 @@ private fun TruncatedNote() {
 private fun scaledTextStyle(style: androidx.compose.ui.text.TextStyle, scale: Float) =
     style.copy(fontSize = style.fontSize * scale, lineHeight = style.lineHeight * scale)
 
+/**
+ * Teks prose Markdown yang menghormati Pembungkus Kata: nyala = teks
+ * membungkus normal; mati = satu baris memanjang dan bisa digeser
+ * menyamping per blok (perilaku sama seperti blok kode).
+ */
+@Composable
+private fun MdWrapText(
+    text: AnnotatedString,
+    style: androidx.compose.ui.text.TextStyle,
+    wordWrap: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (wordWrap) {
+        BasicText(text = text, style = style, modifier = modifier)
+    } else {
+        val scrollState = rememberScrollState()
+        BasicText(
+            text = text,
+            style = style,
+            softWrap = false,
+            modifier = modifier.horizontalScroll(scrollState),
+        )
+    }
+}
+
 @Composable
 private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, textScale: Float) {
     val bodyStyle = scaledTextStyle(NotelyText.EditorBody, textScale)
     when (block) {
         is MdBlock.Heading -> {
             Spacer(Modifier.height(if (block.level == 1) 10.dp else 16.dp))
-            BasicText(
+            MdWrapText(
                 text = inlineMarkdown(block.text, query),
                 style = when (block.level) {
                     1 -> NotelyText.EditorTitle.copy(
@@ -737,12 +762,17 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, text
                         lineHeight = 24.sp * textScale,
                     )
                 },
+                wordWrap = wordWrap,
             )
             Spacer(Modifier.height(6.dp))
         }
 
         is MdBlock.Paragraph -> {
-            BasicText(text = inlineMarkdown(block.text, query), style = bodyStyle)
+            MdWrapText(
+                text = inlineMarkdown(block.text, query),
+                style = bodyStyle,
+                wordWrap = wordWrap,
+            )
             Spacer(Modifier.height(10.dp))
         }
 
@@ -756,9 +786,10 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, text
                     },
                     style = bodyStyle.copy(color = NotelyColors.Blue),
                 )
-                BasicText(
+                MdWrapText(
                     text = inlineMarkdown(block.text, query),
                     style = bodyStyle,
+                    wordWrap = wordWrap,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -770,9 +801,10 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, text
                     text = "${block.number}.  ",
                     style = bodyStyle.copy(color = NotelyColors.Blue),
                 )
-                BasicText(
+                MdWrapText(
                     text = inlineMarkdown(block.text, query),
                     style = bodyStyle,
+                    wordWrap = wordWrap,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -859,9 +891,10 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, text
                         .background(NotelyColors.Blue),
                 )
                 Spacer(Modifier.width(12.dp))
-                BasicText(
+                MdWrapText(
                     text = inlineMarkdown(block.text, query),
                     style = bodyStyle.copy(color = NotelyColors.SecondaryLabel),
+                    wordWrap = wordWrap,
                     modifier = Modifier.weight(1f),
                 )
             }
