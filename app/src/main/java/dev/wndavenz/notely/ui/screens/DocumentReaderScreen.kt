@@ -509,7 +509,7 @@ private fun DocumentSourceEditor(
 }
 
 /**
- * Dialog "Ukuran Teks": slider geser bebas 0,8x–1,4x dengan pratinjau
+ * Dialog "Ukuran Teks": slider geser bebas 0,5x–1,4x dengan pratinjau
  * langsung + label persen; perubahan tersimpan seketika.
  */
 @Composable
@@ -518,7 +518,7 @@ private fun TextSizeDialog(
     onScaleChange: (Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val minScale = 0.8f
+    val minScale = 0.5f
     val maxScale = 1.4f
     val density = LocalDensity.current
     var trackWidthPx by remember { mutableStateOf(0) }
