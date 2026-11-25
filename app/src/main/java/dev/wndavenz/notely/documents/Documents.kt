@@ -169,6 +169,36 @@ object ReaderPrefs {
     }
 }
 
+/**
+ * Dokumen yang disematkan (pin) di halaman Dokumen, disimpan sebagai
+ * kumpulan path absolut — dokumen tidak punya baris database seperti
+ * catatan, jadi pin-nya hidup di SharedPreferences.
+ */
+object PinnedDocuments {
+
+    private const val PREFS_NAME = "pinned_documents"
+    private const val KEY_PATHS = "paths"
+
+    fun paths(context: Context): Set<String> =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(KEY_PATHS, emptySet())
+            ?.toSet()
+            ?: emptySet()
+
+    fun setPinned(context: Context, path: String, pinned: Boolean) {
+        val updated = paths(context).toMutableSet()
+        if (pinned) {
+            updated.add(path)
+        } else {
+            updated.remove(path)
+        }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(KEY_PATHS, updated)
+            .apply()
+    }
+}
+
 /** Format ukuran berkas ringkas: B, KB, MB. */
 fun formatFileSize(bytes: Long): String = when {
     bytes < 1_000 -> "$bytes B"

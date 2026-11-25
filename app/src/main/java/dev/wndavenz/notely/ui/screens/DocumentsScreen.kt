@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,7 +32,9 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,17 +51,25 @@ import com.composables.icons.lucide.FileText
 import com.composables.icons.lucide.Lucide
 import dev.wndavenz.notely.documents.DocumentAccess
 import dev.wndavenz.notely.documents.DocumentFile
+import dev.wndavenz.notely.documents.PinnedDocuments
 import dev.wndavenz.notely.documents.formatFileSize
 import dev.wndavenz.notely.ui.DocumentsUiState
 import dev.wndavenz.notely.ui.DocumentsViewModel
 import dev.wndavenz.notely.ui.components.EmptyStateText
+import dev.wndavenz.notely.ui.components.IosActionSheet
 import dev.wndavenz.notely.ui.components.IosBottomBar
+import dev.wndavenz.notely.ui.components.IosConfirmDialog
 import dev.wndavenz.notely.ui.components.IosSearchField
 import dev.wndavenz.notely.ui.components.IosTopBar
+import dev.wndavenz.notely.ui.components.NoteSectionHeader
+import dev.wndavenz.notely.ui.components.SheetAction
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
 import dev.wndavenz.notely.ui.viewModelFactory
 import dev.wndavenz.notely.utils.DateFormat
+import dev.wndavenz.notely.utils.NoteDateGroup
+import dev.wndavenz.notely.utils.dateGroupOf
+import java.io.File
 
 /**
  * Daftar dokumen .md / .txt hasil pindai otomatis seluruh penyimpanan.
@@ -76,6 +87,10 @@ fun DocumentsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    var pinnedPaths by remember { mutableStateOf(PinnedDocuments.paths(context)) }
+    var actionDocument by remember { mutableStateOf<DocumentFile?>(null) }
+    var confirmDelete by remember { mutableStateOf<DocumentFile?>(null) }
+
     // Android 10: izin baca klasik diminta lewat dialog sistem.
     val legacyPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -89,6 +104,7 @@ fun DocumentsScreen(
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                pinnedPaths = PinnedDocuments.paths(context)
                 viewModel.refresh(DocumentAccess.hasAccess(context))
             }
         }
@@ -192,13 +208,44 @@ fun DocumentsScreen(
                                 },
                             )
                         }
-                    } else {
+                    } else if (query.isNotBlank()) {
+                        // Mode cari: daftar datar, sama seperti Catatan.
                         items(visible, key = { it.path }) { document ->
                             DocumentCard(
                                 document = document,
                                 onClick = { onOpenDocument(document) },
+                                onLongClick = { actionDocument = document },
                             )
                             Spacer(Modifier.height(10.dp))
+                        }
+                    } else {
+                        // Seksi Disematkan + kelompok tanggal, sama seperti
+                        // halaman Catatan.
+                        val pinned = visible.filter { it.path in pinnedPaths }
+                        val rest = visible.filter { it.path !in pinnedPaths }
+                        if (pinned.isNotEmpty()) {
+                            item { NoteSectionHeader(title = "Disematkan", pinned = true) }
+                            items(pinned, key = { it.path }) { document ->
+                                DocumentCard(
+                                    document = document,
+                                    onClick = { onOpenDocument(document) },
+                                    onLongClick = { actionDocument = document },
+                                )
+                                Spacer(Modifier.height(10.dp))
+                            }
+                        }
+                        val grouped = rest.groupBy { dateGroupOf(it.modifiedAt) }
+                        for (group in NoteDateGroup.entries) {
+                            val groupDocuments = grouped[group] ?: continue
+                            item { NoteSectionHeader(title = group.label, pinned = false) }
+                            items(groupDocuments, key = { it.path }) { document ->
+                                DocumentCard(
+                                    document = document,
+                                    onClick = { onOpenDocument(document) },
+                                    onLongClick = { actionDocument = document },
+                                )
+                                Spacer(Modifier.height(10.dp))
+                            }
                         }
                     }
                 }
@@ -214,17 +261,57 @@ fun DocumentsScreen(
         )
         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
+
+    // Menu tekan lama, sama seperti kartu catatan.
+    actionDocument?.let { document ->
+        val isPinned = document.path in pinnedPaths
+        IosActionSheet(
+            actions = listOf(
+                SheetAction(label = if (isPinned) "Lepas Sematan" else "Sematkan") {
+                    PinnedDocuments.setPinned(context, document.path, !isPinned)
+                    pinnedPaths = PinnedDocuments.paths(context)
+                    actionDocument = null
+                },
+                SheetAction(label = "Hapus", color = NotelyColors.Destructive) {
+                    confirmDelete = document
+                    actionDocument = null
+                },
+            ),
+            onDismiss = { actionDocument = null },
+        )
+    }
+
+    confirmDelete?.let { document ->
+        IosConfirmDialog(
+            title = "Hapus File?",
+            message = "\"${document.name}\" akan dihapus permanen dari penyimpanan.",
+            confirmLabel = "Hapus",
+            onConfirm = {
+                File(document.path).delete()
+                PinnedDocuments.setPinned(context, document.path, false)
+                pinnedPaths = PinnedDocuments.paths(context)
+                confirmDelete = null
+                viewModel.refresh(DocumentAccess.hasAccess(context))
+            },
+            onDismiss = { confirmDelete = null },
+        )
+    }
 }
 
-/** Kartu satu dokumen: nama berkas, jalur relatif + tanggal + ukuran. */
+/** Kartu satu dokumen: nama berkas, jalur relatif + tanggal + ukuran.
+ *  Ketuk = buka, tekan lama = menu (sematkan / hapus). */
 @Composable
-private fun DocumentCard(document: DocumentFile, onClick: () -> Unit) {
+private fun DocumentCard(
+    document: DocumentFile,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(9.dp))
             .background(NotelyColors.Card)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
