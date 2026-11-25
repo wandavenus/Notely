@@ -1,6 +1,9 @@
 package dev.wndavenz.notely.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
@@ -21,6 +26,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
@@ -40,9 +46,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -54,8 +63,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.ChevronDown
@@ -79,6 +90,8 @@ import dev.wndavenz.notely.ui.viewModelFactory
 import dev.wndavenz.notely.utils.Markdown
 import dev.wndavenz.notely.utils.MarkdownInline
 import dev.wndavenz.notely.utils.MdBlock
+import kotlin.math.roundToInt
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -98,7 +111,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     var wordWrap by remember { mutableStateOf(true) }
     var showMenu by remember { mutableStateOf(false) }
     var showGoToLine by remember { mutableStateOf(false) }
-    var showTextSizeSheet by remember { mutableStateOf(false) }
+    var showTextSizeDialog by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
 
     // Ukuran teks viewer (pilihan menu titik tiga), tersimpan antar sesi.
@@ -106,6 +119,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     var textScale by remember { mutableStateOf(ReaderPrefs.textScale(context)) }
 
     val listState = rememberLazyListState()
+    val txtScrollState = rememberScrollState()
     val editorScrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -138,10 +152,27 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
             textLines.indices.filter { textLines[it].contains(query, ignoreCase = true) }
         }
     }
+    /** Lompat ke baris TXT: mode bungkus = item LazyColumn; mode bentang =
+     *  gulir piksel setinggi baris itu (teks satu node, bukan per baris). */
+    fun scrollToTxtLine(lineIndex: Int) {
+        scope.launch {
+            if (wordWrap) {
+                listState.animateScrollToItem(lineIndex)
+            } else {
+                val px = with(density) { (24.sp * textScale * lineIndex).toPx() }
+                txtScrollState.animateScrollTo(px.toInt())
+            }
+        }
+    }
+
     LaunchedEffect(query) {
         currentMatch = 0
         if (!editing && matchItems.isNotEmpty()) {
-            listState.animateScrollToItem(matchItems[0])
+            if (!document.isMarkdown && !wordWrap) {
+                scrollToTxtLine(matchItems[0])
+            } else {
+                listState.animateScrollToItem(matchItems[0])
+            }
         }
     }
 
@@ -149,7 +180,11 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
         if (matchItems.isEmpty()) return
         currentMatch = (currentMatch + delta).mod(matchItems.size)
         if (!editing) {
-            scope.launch { listState.animateScrollToItem(matchItems[currentMatch]) }
+            if (!document.isMarkdown && !wordWrap) {
+                scrollToTxtLine(matchItems[currentMatch])
+            } else {
+                scope.launch { listState.animateScrollToItem(matchItems[currentMatch]) }
+            }
         }
     }
 
@@ -167,7 +202,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
             }
             else -> {
                 val target = (lineNumber - 1).coerceIn(0, (textLines.size - 1).coerceAtLeast(0))
-                scope.launch { listState.animateScrollToItem(target) }
+                scrollToTxtLine(target)
             }
         }
     }
@@ -198,6 +233,8 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 .height(0.3.dp)
                 .background(Color.White.copy(alpha = 0.7f)),
         )
+        // Napas antara navbar dan isi: teks jangan mepet ke pembatas.
+        Spacer(Modifier.height(12.dp))
 
         if (searchOpen) {
             Row(
@@ -271,29 +308,40 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 item { Spacer(Modifier.height(32.dp)) }
             }
 
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 0.dp, end = 12.dp),
-            ) {
-                items(textLines.size) { index ->
-                    NumberedLineRow(number = index + 1, wrap = wordWrap) { softWrap, modifier ->
-                        BasicText(
-                            text = addHighlights(
-                                AnnotatedString(textLines[index].ifEmpty { " " }),
-                                query,
-                            ),
-                            style = scaledTextStyle(NotelyText.EditorBody, textScale),
-                            softWrap = softWrap,
-                            modifier = modifier,
-                        )
+            else -> if (wordWrap) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 0.dp, end = 12.dp),
+                ) {
+                    items(textLines.size) { index ->
+                        NumberedLineRow(number = index + 1, wrap = wordWrap) { softWrap, modifier ->
+                            BasicText(
+                                text = addHighlights(
+                                    AnnotatedString(textLines[index].ifEmpty { " " }),
+                                    query,
+                                ),
+                                style = scaledTextStyle(NotelyText.EditorBody, textScale),
+                                softWrap = softWrap,
+                                modifier = modifier,
+                            )
+                        }
                     }
+                    if (state.truncated) {
+                        item { TruncatedNote() }
+                    }
+                    item { Spacer(Modifier.height(32.dp)) }
                 }
-                if (state.truncated) {
-                    item { TruncatedNote() }
-                }
-                item { Spacer(Modifier.height(32.dp)) }
+            } else {
+                TxtNoWrapView(
+                    lines = textLines,
+                    query = query,
+                    textScale = textScale,
+                    truncated = state.truncated,
+                    scrollState = txtScrollState,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
         Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
@@ -311,7 +359,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                     showMenu = false
                 },
                 SheetAction(label = "Ukuran Teks") {
-                    showTextSizeSheet = true
+                    showTextSizeDialog = true
                     showMenu = false
                 },
                 SheetAction(
@@ -335,26 +383,14 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
         )
     }
 
-    if (showTextSizeSheet) {
-        val sizes = listOf(
-            "Kecil" to 0.85f,
-            "Sedang" to 1.0f,
-            "Besar" to 1.15f,
-            "Sangat Besar" to 1.3f,
-        )
-        IosActionSheet(
-            actions = sizes.map { (label, scale) ->
-                SheetAction(
-                    label = if (textScale == scale) "$label ✓" else label,
-                    color = NotelyColors.Label,
-                ) {
-                    textScale = scale
-                    ReaderPrefs.setTextScale(context, scale)
-                    showTextSizeSheet = false
-                }
+    if (showTextSizeDialog) {
+        TextSizeDialog(
+            scale = textScale,
+            onScaleChange = { newScale ->
+                textScale = newScale
+                ReaderPrefs.setTextScale(context, newScale)
             },
-            onDismiss = { showTextSizeSheet = false },
-            title = "Ukuran Teks",
+            onDismiss = { showTextSizeDialog = false },
         )
     }
 
@@ -473,6 +509,203 @@ private fun DocumentSourceEditor(
     }
 }
 
+/**
+ * Dialog "Ukuran Teks": slider geser bebas 0,8x–1,4x dengan pratinjau
+ * langsung + label persen; perubahan tersimpan seketika.
+ */
+@Composable
+private fun TextSizeDialog(
+    scale: Float,
+    onScaleChange: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val minScale = 0.8f
+    val maxScale = 1.4f
+    val density = LocalDensity.current
+    var trackWidthPx by remember { mutableStateOf(0) }
+    val fraction = ((scale - minScale) / (maxScale - minScale)).coerceIn(0f, 1f)
+
+    fun updateFromX(x: Float) {
+        if (trackWidthPx > 0) {
+            val f = (x / trackWidthPx).coerceIn(0f, 1f)
+            onScaleChange(minScale + f * (maxScale - minScale))
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(300.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(NotelyColors.SheetBackground)
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            BasicText(
+                text = "Ukuran Teks",
+                style = NotelyText.NavTitle.copy(textAlign = TextAlign.Center),
+            )
+            Spacer(Modifier.height(16.dp))
+            BasicText(
+                text = "Contoh teks dokumen",
+                style = scaledTextStyle(NotelyText.EditorBody, scale),
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(4.dp))
+            BasicText(
+                text = "${(scale * 100).roundToInt()}%",
+                style = NotelyText.Footnote,
+            )
+            Spacer(Modifier.height(18.dp))
+            // Rel slider: ketuk atau geser di mana pun sepanjang rel.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .onSizeChanged { trackWidthPx = it.width }
+                    .pointerInput(trackWidthPx) {
+                        coroutineScope {
+                            launch {
+                                detectTapGestures { offset -> updateFromX(offset.x) }
+                            }
+                            launch {
+                                detectDragGestures { change, _ ->
+                                    updateFromX(change.position.x)
+                                    change.consume()
+                                }
+                            }
+                        }
+                    },
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(NotelyColors.Separator),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .width(with(density) { (trackWidthPx * fraction).toDp() })
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(NotelyColors.Blue),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset {
+                            IntOffset(
+                                x = (trackWidthPx * fraction).roundToInt() -
+                                    with(density) { 12.dp.roundToPx() },
+                                y = 0,
+                            )
+                        }
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color.White),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onScaleChange(1.0f) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicText(
+                        text = "Atur Ulang",
+                        style = NotelyText.Body.copy(color = NotelyColors.Blue),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicText(
+                        text = "Selesai",
+                        style = NotelyText.BodySemibold.copy(color = NotelyColors.Blue),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Viewer TXT mode bentang (Pembungkus Kata mati): teks digambar sebagai
+ * SATU node supaya gulir horizontal menggeser semua baris serentak.
+ * Kolom nomor diam di kiri, ikut tergulir vertikal lewat offset dari
+ * keadaan gulir konten; pembatas vertikal diam setinggi layar di tengah.
+ */
+@Composable
+private fun TxtNoWrapView(
+    lines: List<String>,
+    query: String,
+    textScale: Float,
+    truncated: Boolean,
+    scrollState: androidx.compose.foundation.ScrollState,
+    modifier: Modifier = Modifier,
+) {
+    val bodyStyle = scaledTextStyle(NotelyText.EditorBody, textScale)
+    val fullText = remember(lines, query) {
+        val joined = lines.joinToString("\n")
+        addHighlights(AnnotatedString(joined.ifEmpty { " " }), query)
+    }
+    val numbersText = remember(lines.size) {
+        (1..lines.size).joinToString("\n")
+    }
+    val horizontalState = rememberScrollState()
+    Row(modifier = modifier.padding(end = 12.dp)) {
+        Box(
+            Modifier
+                .width(30.dp)
+                .fillMaxHeight()
+                .clipToBounds(),
+        ) {
+            BasicText(
+                text = numbersText,
+                style = bodyStyle.copy(
+                    color = NotelyColors.TertiaryLabel,
+                    fontSize = 13.sp * textScale,
+                    textAlign = TextAlign.End,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, -scrollState.value) },
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .width(0.3.dp)
+                .fillMaxHeight()
+                .background(Color.White.copy(alpha = 0.7f)),
+        )
+        Spacer(Modifier.width(10.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .verticalScroll(scrollState)
+                .horizontalScroll(horizontalState),
+        ) {
+            Column {
+                BasicText(text = fullText, style = bodyStyle, softWrap = false)
+                if (truncated) {
+                    TruncatedNote()
+                }
+                Spacer(Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
 @Composable
 private fun TruncatedNote() {
     Spacer(Modifier.height(16.dp))
@@ -564,19 +797,55 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, text
                 val codeLines = remember(block.text, block.language, query) {
                     highlightedCodeLines(block.text, block.language, query)
                 }
-                codeLines.forEachIndexed { index, line ->
-                    NumberedLineRow(number = index + 1, compact = true, wrap = wordWrap) { softWrap, modifier ->
-                        BasicText(
-                            text = line,
-                            style = NotelyText.Callout.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.5.sp * textScale,
-                                lineHeight = 19.sp * textScale,
-                            ),
-                            softWrap = softWrap,
-                            modifier = modifier,
-                        )
+                // Kode digambar sebagai SATU node teks (baris digabung \n)
+                // supaya gulir horizontal mode bentang menggeser semua
+                // baris serentak; nomor baris juga satu teks rata kanan.
+                val combinedCode = remember(codeLines) {
+                    buildAnnotatedString {
+                        codeLines.forEachIndexed { index, line ->
+                            if (index > 0) append('\n')
+                            append(line)
+                        }
                     }
+                }
+                val codeNumbers = remember(codeLines.size) {
+                    (1..codeLines.size).joinToString("\n")
+                }
+                val codeScrollState = rememberScrollState()
+                Row(Modifier.height(IntrinsicSize.Max)) {
+                    BasicText(
+                        text = codeNumbers,
+                        style = NotelyText.Caption.copy(
+                            color = NotelyColors.TertiaryLabel,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp * textScale,
+                            lineHeight = 19.sp * textScale,
+                            textAlign = TextAlign.End,
+                        ),
+                        modifier = Modifier.width(26.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier
+                            .width(0.3.dp)
+                            .fillMaxHeight()
+                            .background(Color.White.copy(alpha = 0.7f)),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    BasicText(
+                        text = combinedCode,
+                        style = NotelyText.Callout.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.5.sp * textScale,
+                            lineHeight = 19.sp * textScale,
+                        ),
+                        softWrap = wordWrap,
+                        modifier = if (wordWrap) {
+                            Modifier
+                        } else {
+                            Modifier.horizontalScroll(codeScrollState)
+                        },
+                    )
                 }
             }
             Spacer(Modifier.height(10.dp))
