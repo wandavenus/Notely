@@ -7,6 +7,8 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import dev.wndavenz.notely.data.FolderSummary
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
+import dev.wndavenz.notely.documents.DocumentFile
+import dev.wndavenz.notely.documents.DocumentScanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,6 +40,8 @@ data class FoldersUiState(
     val pinnedCount: Int = 0,
     val trashCount: Int = 0,
     val searchResults: List<NoteEntity> = emptyList(),
+    /** Jumlah dokumen .md/.txt hasil pindai; null = belum dipindai / belum ada akses. */
+    val documentCount: Int? = null,
 ) {
     /** Folder bawaan selalu baris pertama; dipakai tombol tulis baru. */
     val defaultFolderId: Long get() = folders.firstOrNull()?.id ?: 1L
@@ -47,6 +51,8 @@ data class FoldersUiState(
 class FoldersViewModel(private val repository: NotesRepository) : ViewModel() {
 
     private val query = MutableStateFlow("")
+    private val documentCount = MutableStateFlow<Int?>(null)
+    private var documentScanJob: Job? = null
 
     val uiState: StateFlow<FoldersUiState> = combine(
         repository.folders(),
@@ -55,17 +61,35 @@ class FoldersViewModel(private val repository: NotesRepository) : ViewModel() {
         query.flatMapLatest { text ->
             if (text.isBlank()) flowOf(emptyList()) else repository.searchNotes(text)
         },
-    ) { folders, pinnedCount, trashCount, results ->
+        documentCount,
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
         FoldersUiState(
-            folders = folders,
-            pinnedCount = pinnedCount,
-            trashCount = trashCount,
-            searchResults = results,
+            folders = values[0] as List<FolderSummary>,
+            pinnedCount = values[1] as Int,
+            trashCount = values[2] as Int,
+            searchResults = values[3] as List<NoteEntity>,
+            documentCount = values[4] as Int?,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FoldersUiState())
 
     fun onQueryChange(value: String) {
         query.value = value
+    }
+
+    /**
+     * Pindai dokumen untuk angka pada kartu Dokumen. Hanya berjalan bila
+     * akses file sudah diberikan; pemindaian ulang dibatalkan otomatis.
+     */
+    fun refreshDocumentCount(hasAccess: Boolean) {
+        documentScanJob?.cancel()
+        if (!hasAccess) {
+            documentCount.value = null
+            return
+        }
+        documentScanJob = viewModelScope.launch {
+            documentCount.value = DocumentScanner.scan().size
+        }
     }
 
     fun createFolder(name: String) {
@@ -205,6 +229,96 @@ class EditorViewModel(
     fun moveToTrash() {
         val id = noteId ?: return
         appScope.launch { repository.moveToTrash(id) }
+    }
+}
+
+// --------------------------------------------------------- layar Dokumen
+
+sealed interface DocumentsUiState {
+    data object NeedAccess : DocumentsUiState
+    data object Scanning : DocumentsUiState
+    data class Ready(val documents: List<DocumentFile>) : DocumentsUiState
+}
+
+class DocumentsViewModel : ViewModel() {
+
+    private val _state = MutableStateFlow<DocumentsUiState>(DocumentsUiState.Scanning)
+    val state: StateFlow<DocumentsUiState> = _state.asStateFlow()
+
+    private var scanJob: Job? = null
+
+    /** Muat ulang daftar: tanpa akses -> minta izin; dengan akses -> pindai. */
+    fun refresh(hasAccess: Boolean) {
+        scanJob?.cancel()
+        if (!hasAccess) {
+            _state.value = DocumentsUiState.NeedAccess
+            return
+        }
+        _state.value = DocumentsUiState.Scanning
+        scanJob = viewModelScope.launch {
+            _state.value = DocumentsUiState.Ready(DocumentScanner.scan())
+        }
+    }
+}
+
+// ----------------------------------------------------- layar baca dokumen
+
+data class DocumentReaderUiState(
+    val loaded: Boolean = false,
+    val text: String = "",
+    val truncated: Boolean = false,
+    val failed: Boolean = false,
+)
+
+class DocumentReaderViewModel(private val document: DocumentFile) : ViewModel() {
+
+    private val _state = MutableStateFlow(DocumentReaderUiState())
+    val state: StateFlow<DocumentReaderUiState> = _state.asStateFlow()
+
+    private var saveJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            try {
+                val read = DocumentScanner.readText(document)
+                _state.value = DocumentReaderUiState(
+                    loaded = true,
+                    text = read.text,
+                    truncated = read.truncated,
+                )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.value = DocumentReaderUiState(loaded = true, failed = true)
+            }
+        }
+    }
+
+    /** Mode edit (Hanya Baca mati): simpan otomatis ke file aslinya, jeda 800 ms. */
+    fun onEdited(text: String) {
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
+            delay(800)
+            writeBack(text)
+        }
+    }
+
+    /** Simpan paksa sekarang (dipakai saat keluar dari mode edit). */
+    fun saveNow(text: String) {
+        saveJob?.cancel()
+        viewModelScope.launch { writeBack(text) }
+    }
+
+    private suspend fun writeBack(text: String) {
+        try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                java.io.File(document.path).writeText(text, Charsets.UTF_8)
+            }
+            _state.update { it.copy(text = text, truncated = false) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            // Gagal menulis (mis. file dipindah): biarkan teks layar apa adanya;
+            // keadaan gagal tidak ditandai supaya pengguna tidak kehilangan edit.
+        }
     }
 }
 

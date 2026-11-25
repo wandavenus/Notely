@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,11 +34,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.CircleMinus
+import com.composables.icons.lucide.FileText
 import com.composables.icons.lucide.Folder
 import com.composables.icons.lucide.FolderPlus
 import com.composables.icons.lucide.Lucide
@@ -48,6 +54,7 @@ import com.composables.icons.lucide.Trash2
 import dev.wndavenz.notely.data.FolderSummary
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
+import dev.wndavenz.notely.documents.DocumentAccess
 import dev.wndavenz.notely.ui.FoldersViewModel
 import dev.wndavenz.notely.ui.ListView
 import dev.wndavenz.notely.ui.components.EmptyStateText
@@ -69,6 +76,7 @@ import dev.wndavenz.notely.ui.viewModelFactory
 fun FoldersScreen(
     repository: NotesRepository,
     onOpenList: (ListView) -> Unit,
+    onOpenDocuments: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenEditor: (NoteEntity) -> Unit,
     onCompose: (Long) -> Unit,
@@ -78,6 +86,20 @@ fun FoldersScreen(
         factory = viewModelFactory { FoldersViewModel(repository) },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Angka kartu Dokumen disegarkan tiap layar depan kembali ke depan
+    // (izin file bisa baru diberikan, file bisa berubah di latar).
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshDocumentCount(DocumentAccess.hasAccess(context))
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val searchState = rememberTextFieldState()
     LaunchedEffect(searchState) {
@@ -151,6 +173,17 @@ fun FoldersScreen(
                                 },
                             )
                         }
+                    }
+                }
+                item { Spacer(Modifier.height(18.dp)) }
+                item {
+                    IosGroupCard {
+                        SmartRow(
+                            icon = Lucide.FileText,
+                            label = "Dokumen",
+                            count = state.documentCount,
+                            onClick = onOpenDocuments,
+                        )
                     }
                 }
                 item { Spacer(Modifier.height(18.dp)) }

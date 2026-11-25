@@ -28,8 +28,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
+import dev.wndavenz.notely.documents.DocumentFile
 import dev.wndavenz.notely.ui.components.UpdateDialog
 import dev.wndavenz.notely.ui.components.UpdateUiState
+import dev.wndavenz.notely.ui.screens.DocumentReaderScreen
+import dev.wndavenz.notely.ui.screens.DocumentsScreen
 import dev.wndavenz.notely.ui.screens.EditorScreen
 import dev.wndavenz.notely.ui.screens.FoldersScreen
 import dev.wndavenz.notely.ui.screens.NotesListScreen
@@ -71,6 +74,8 @@ sealed interface Destination {
         val sessionKey: Long = System.nanoTime(),
     ) : Destination
     data object Settings : Destination
+    data object Documents : Destination
+    data class DocumentReader(val document: DocumentFile) : Destination
 }
 
 /** Layar teratas beserta kedalamannya di tumpukan, untuk arah animasi. */
@@ -207,6 +212,7 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                 Destination.Folders -> FoldersScreen(
                     repository = repository,
                     onOpenList = { view -> navigate(Destination.NoteList(view)) },
+                    onOpenDocuments = { navigate(Destination.Documents) },
                     onOpenSettings = { navigate(Destination.Settings) },
                     onOpenEditor = { note ->
                         navigate(
@@ -264,6 +270,18 @@ fun NotelyApp(repository: NotesRepository, appScope: CoroutineScope) {
                     repository = repository,
                     onBack = { pop() },
                     onCheckUpdate = { runUpdateCheck(manual = true) },
+                )
+
+                Destination.Documents -> DocumentsScreen(
+                    onBack = { pop() },
+                    onOpenDocument = { document ->
+                        navigate(Destination.DocumentReader(document))
+                    },
+                )
+
+                is Destination.DocumentReader -> DocumentReaderScreen(
+                    document = destination.document,
+                    onBack = { pop() },
                 )
             }
         }

@@ -4,6 +4,14 @@
     <!-- Internet hanya untuk memeriksa + mengunduh pembaruan dari GitHub Releases. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Dokumen: pindai file .md/.txt di seluruh penyimpanan bersama.
+         Android 11+ memakai "Akses semua file" (MANAGE_EXTERNAL_STORAGE,
+         diberikan pengguna lewat Pengaturan); Android 10 memakai izin baca
+         klasik di bawah ini. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <application
         android:name=".NotelyApplication"
