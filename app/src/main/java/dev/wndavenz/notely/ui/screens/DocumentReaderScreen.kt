@@ -3,6 +3,7 @@ package dev.wndavenz.notely.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,6 +40,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +50,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -108,6 +113,16 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
 
     var readOnly by remember { mutableStateOf(true) }
     var wordWrap by remember { mutableStateOf(true) }
+    // Gulir horizontal BERSAMA untuk mode bentang Markdown: semua blok
+    // digeser satu offset yang sama (scroll per blok bikin cuma blok yang
+    // disentuh yang bergerak). Lebar isi terlebar dilaporkan tiap blok.
+    var mdScrollX by remember { mutableFloatStateOf(0f) }
+    var mdMaxWidthPx by remember { mutableIntStateOf(0) }
+    var mdViewportWidthPx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(wordWrap, document.path) {
+        mdScrollX = 0f
+        mdMaxWidthPx = 0
+    }
     var showMenu by remember { mutableStateOf(false) }
     var showGoToLine by remember { mutableStateOf(false) }
     var showTextSizeDialog by remember { mutableStateOf(false) }
@@ -292,19 +307,49 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
 
-            document.isMarkdown -> LazyColumn(
-                state = listState,
+            document.isMarkdown -> Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 20.dp),
+                    .onSizeChanged { size ->
+                        mdViewportWidthPx = size.width -
+                            with(density) { 40.dp.toPx() }.toInt()
+                    }
+                    .pointerInput(wordWrap) {
+                        if (!wordWrap) {
+                            detectHorizontalDragGestures { change, dragAmount ->
+                                val maxScroll = (mdMaxWidthPx - mdViewportWidthPx)
+                                    .coerceAtLeast(0)
+                                    .toFloat()
+                                mdScrollX = (mdScrollX - dragAmount)
+                                    .coerceIn(0f, maxScroll)
+                                change.consume()
+                            }
+                        }
+                    },
             ) {
-                items(blocksWithLines.size) { index ->
-                    MarkdownBlock(blocksWithLines[index].first, query, wordWrap, textScale)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp),
+                ) {
+                    items(blocksWithLines.size) { index ->
+                        MarkdownBlock(
+                            block = blocksWithLines[index].first,
+                            query = query,
+                            wordWrap = wordWrap,
+                            textScale = textScale,
+                            noWrapScrollX = mdScrollX,
+                            onContentWidth = { width ->
+                                if (width > mdMaxWidthPx) mdMaxWidthPx = width
+                            },
+                        )
+                    }
+                    if (state.truncated) {
+                        item { TruncatedNote() }
+                    }
+                    item { Spacer(Modifier.height(32.dp)) }
                 }
-                if (state.truncated) {
-                    item { TruncatedNote() }
-                }
-                item { Spacer(Modifier.height(32.dp)) }
             }
 
             else -> if (wordWrap) {
@@ -720,8 +765,8 @@ private fun scaledTextStyle(style: androidx.compose.ui.text.TextStyle, scale: Fl
 
 /**
  * Teks prose Markdown yang menghormati Pembungkus Kata: nyala = teks
- * membungkus normal; mati = satu baris memanjang dan bisa digeser
- * menyamping per blok (perilaku sama seperti blok kode).
+ * membungkus normal; mati = softWrap mati — teks memanjang selebar
+ * aslinya dan ikut digeser offset bersama bloknya (lihat MarkdownBlock).
  */
 @Composable
 private fun MdWrapText(
@@ -730,21 +775,44 @@ private fun MdWrapText(
     wordWrap: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    BasicText(text = text, style = style, softWrap = wordWrap, modifier = modifier)
+}
+
+@Composable
+private fun MarkdownBlock(
+    block: MdBlock,
+    query: String,
+    wordWrap: Boolean,
+    textScale: Float,
+    noWrapScrollX: Float = 0f,
+    onContentWidth: (Int) -> Unit = {},
+) {
     if (wordWrap) {
-        BasicText(text = text, style = style, modifier = modifier)
+        MarkdownBlockContent(block, query, wordWrap, textScale)
     } else {
-        val scrollState = rememberScrollState()
-        BasicText(
-            text = text,
-            style = style,
-            softWrap = false,
-            modifier = modifier.horizontalScroll(scrollState),
-        )
+        // Mode bentang: blok diukur selebar isi aslinya lalu digeser
+        // dengan offset bersama satu dokumen (dipotong di tepi item),
+        // jadi semua blok bergerak serentak pas digeser menyamping.
+        val maxScrollX = (noWrapScrollX).coerceAtLeast(0f)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clipToBounds(),
+        ) {
+            Column(
+                Modifier
+                    .wrapContentWidth(unbounded = true)
+                    .offset { IntOffset(-maxScrollX.roundToInt(), 0) }
+                    .onSizeChanged { onContentWidth(it.width) },
+            ) {
+                MarkdownBlockContent(block, query, wordWrap, textScale)
+            }
+        }
     }
 }
 
 @Composable
-private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, textScale: Float) {
+private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolean, textScale: Float) {
     val bodyStyle = scaledTextStyle(NotelyText.EditorBody, textScale)
     when (block) {
         is MdBlock.Heading -> {
