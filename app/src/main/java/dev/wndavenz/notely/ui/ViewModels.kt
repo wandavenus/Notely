@@ -87,6 +87,7 @@ class FoldersViewModel(private val repository: NotesRepository) : ViewModel() {
             documentCount.value = null
             return
         }
+        DocumentScanner.cachedResults?.let { documentCount.value = it.size }
         documentScanJob = viewModelScope.launch {
             documentCount.value = DocumentScanner.scan().size
         }
@@ -247,14 +248,23 @@ class DocumentsViewModel : ViewModel() {
 
     private var scanJob: Job? = null
 
-    /** Muat ulang daftar: tanpa akses -> minta izin; dengan akses -> pindai. */
+    /**
+     * Muat ulang daftar: tanpa akses -> minta izin. Dengan akses dan cache
+     * tersedia, cache ditampilkan seketika lalu dipindai ulang diam-diam di
+     * latar; tanpa cache, tampilkan keadaan memindai seperti biasa.
+     */
     fun refresh(hasAccess: Boolean) {
         scanJob?.cancel()
         if (!hasAccess) {
             _state.value = DocumentsUiState.NeedAccess
             return
         }
-        _state.value = DocumentsUiState.Scanning
+        val cached = DocumentScanner.cachedResults
+        _state.value = if (cached != null) {
+            DocumentsUiState.Ready(cached)
+        } else {
+            DocumentsUiState.Scanning
+        }
         scanJob = viewModelScope.launch {
             _state.value = DocumentsUiState.Ready(DocumentScanner.scan())
         }

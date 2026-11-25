@@ -78,6 +78,15 @@ object DocumentScanner {
     const val MAX_READ_BYTES = 2_000_000
 
     /**
+     * Hasil pindai terakhir (cache selama proses app hidup). Halaman Dokumen
+     * menampilkannya seketika saat dibuka, lalu memindai ulang diam-diam
+     * di latar — jadi tidak ada layar "Memindai…" tiap kali masuk.
+     */
+    @Volatile
+    var cachedResults: List<DocumentFile>? = null
+        private set
+
+    /**
      * Berkas di dalam folder tersembunyi dan folder Android/ dilewati:
      * isinya bukan dokumen pengguna dan sebagian tidak bisa dijangkau.
      */
@@ -112,6 +121,7 @@ object DocumentScanner {
             }
         }
         found.sortByDescending { it.modifiedAt }
+        cachedResults = found
         found
     }
 
