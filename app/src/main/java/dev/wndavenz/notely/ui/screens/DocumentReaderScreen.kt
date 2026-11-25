@@ -110,8 +110,10 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    val blocksWithLines = remember(state.text, document.isMarkdown) {
-        if (document.isMarkdown && state.loaded && !state.failed) {
+    val blocksWithLines = remember(state.text, document.isMarkdown, readOnly) {
+        // Pas mode edit, hasil render tidak ditampilkan: lewati parse supaya
+        // simpan otomatis tidak membekukan editor tiap beberapa detik.
+        if (document.isMarkdown && readOnly && state.loaded && !state.failed) {
             Markdown.parseWithLines(state.text)
         } else {
             emptyList()
@@ -433,21 +435,28 @@ private fun DocumentSourceEditor(
                     )
                 },
         ) {
-            Column(Modifier.width(30.dp)) {
-                for (number in 1..lineCount) {
-                    BasicText(
-                        text = number.toString(),
-                        style = NotelyText.Caption.copy(
-                            color = NotelyColors.TertiaryLabel,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.5.sp * textScale,
-                            lineHeight = 20.sp * textScale,
-                            textAlign = TextAlign.End,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+            // Semua nomor baris dalam SATU teks (rata kanan per baris):
+            // satu node saja, bukan satu BasicText per baris — editor file
+            // besar jadi jauh lebih ringan pas mengetik.
+            val numbersText = remember(lineCount) {
+                buildString {
+                    for (number in 1..lineCount) {
+                        if (number > 1) append('\n')
+                        append(number)
+                    }
                 }
             }
+            BasicText(
+                text = numbersText,
+                style = NotelyText.Caption.copy(
+                    color = NotelyColors.TertiaryLabel,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.5.sp * textScale,
+                    lineHeight = 20.sp * textScale,
+                    textAlign = TextAlign.End,
+                ),
+                modifier = Modifier.width(30.dp),
+            )
             Spacer(Modifier.width(19.dp))
             BasicTextField(
                 state = editorState,
