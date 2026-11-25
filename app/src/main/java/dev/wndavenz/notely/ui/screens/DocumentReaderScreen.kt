@@ -273,7 +273,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 state = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 2.dp, end = 12.dp),
+                    .padding(start = 0.dp, end = 12.dp),
             ) {
                 items(textLines.size) { index ->
                     NumberedLineRow(number = index + 1, wrap = wordWrap) { softWrap, modifier ->
@@ -418,13 +418,13 @@ private fun DocumentSourceEditor(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 2.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+                .padding(start = 0.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
                 .drawBehind {
                     // Garis vertikal pembatas nomor baris <-> teks (0,3 dp,
                     // putih 70% — lebih tipis & gelap dr putih penuh),
                     // setinggi isi editor yang sebenarnya (digambar belakangan
                     // supaya tidak perlu menebak tinggi konten).
-                    val x = 2.dp.toPx() + 30.dp.toPx() + 8.dp.toPx()
+                    val x = 30.dp.toPx() + 8.dp.toPx()
                     drawLine(
                         color = Color.White.copy(alpha = 0.7f),
                         start = androidx.compose.ui.geometry.Offset(x, 0f),
