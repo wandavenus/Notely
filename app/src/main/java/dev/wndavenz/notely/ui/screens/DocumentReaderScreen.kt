@@ -341,7 +341,11 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                             textScale = textScale,
                             noWrapScrollX = mdScrollX,
                             onContentWidth = { width ->
-                                if (width > mdMaxWidthPx) mdMaxWidthPx = width
+                                // Batas waras: ukuran rusak (mis. tak
+                                // terbatas) jangan sampai jadi batas geser.
+                                if (width in 1..500_000 && width > mdMaxWidthPx) {
+                                    mdMaxWidthPx = width
+                                }
                             },
                         )
                     }
@@ -845,36 +849,70 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
         }
 
         is MdBlock.Bullet -> {
-            Row(Modifier.padding(start = 4.dp, bottom = 6.dp)) {
+            val marker = when (block.checked) {
+                true -> "☑  "
+                false -> "☐  "
+                null -> "•  "
+            }
+            if (wordWrap) {
+                Row(Modifier.padding(start = 4.dp, bottom = 6.dp)) {
+                    BasicText(
+                        text = marker,
+                        style = bodyStyle.copy(color = NotelyColors.Blue),
+                    )
+                    MdWrapText(
+                        text = inlineMarkdown(block.text, query),
+                        style = bodyStyle,
+                        wordWrap = wordWrap,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            } else {
+                // Mode bentang: penanda + isi digabung SATU teks. Pola lama
+                // (Row + weight) rusak pas diukur selebar isi asli — teks
+                // itemnya hilang, tinggal penandanya doang.
                 BasicText(
-                    text = when (block.checked) {
-                        true -> "☑  "
-                        false -> "☐  "
-                        null -> "•  "
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = NotelyColors.Blue)) {
+                            append(marker)
+                        }
+                        append(inlineMarkdown(block.text, query))
                     },
-                    style = bodyStyle.copy(color = NotelyColors.Blue),
-                )
-                MdWrapText(
-                    text = inlineMarkdown(block.text, query),
                     style = bodyStyle,
-                    wordWrap = wordWrap,
-                    modifier = Modifier.weight(1f),
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
+                Spacer(Modifier.height(6.dp))
             }
         }
 
         is MdBlock.Numbered -> {
-            Row(Modifier.padding(start = 4.dp, bottom = 6.dp)) {
+            if (wordWrap) {
+                Row(Modifier.padding(start = 4.dp, bottom = 6.dp)) {
+                    BasicText(
+                        text = "${block.number}.  ",
+                        style = bodyStyle.copy(color = NotelyColors.Blue),
+                    )
+                    MdWrapText(
+                        text = inlineMarkdown(block.text, query),
+                        style = bodyStyle,
+                        wordWrap = wordWrap,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            } else {
                 BasicText(
-                    text = "${block.number}.  ",
-                    style = bodyStyle.copy(color = NotelyColors.Blue),
-                )
-                MdWrapText(
-                    text = inlineMarkdown(block.text, query),
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = NotelyColors.Blue)) {
+                            append("${block.number}.  ")
+                        }
+                        append(inlineMarkdown(block.text, query))
+                    },
                     style = bodyStyle,
-                    wordWrap = wordWrap,
-                    modifier = Modifier.weight(1f),
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
+                Spacer(Modifier.height(6.dp))
             }
         }
 
@@ -963,7 +1001,9 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                     text = inlineMarkdown(block.text, query),
                     style = bodyStyle.copy(color = NotelyColors.SecondaryLabel),
                     wordWrap = wordWrap,
-                    modifier = Modifier.weight(1f),
+                    // Mode bentang tanpa weight: lebar Row tak terbatas,
+                    // weight bikin ukuran teks item rusak (lihat Bullet).
+                    modifier = if (wordWrap) Modifier.weight(1f) else Modifier,
                 )
             }
         }
