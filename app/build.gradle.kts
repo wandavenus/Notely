@@ -15,8 +15,8 @@ android {
         applicationId = "dev.wndavenz.notely"
         minSdk = 29
         targetSdk = 37
-        versionCode = 13
-        versionName = "1.3.3"
+        versionCode = 14
+        versionName = "1.3.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
