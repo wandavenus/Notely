@@ -150,6 +150,25 @@ object DocumentScanner {
 /** Hasil baca berkas: teks (mungkin terpotong) + penanda terpotong. */
 data class DocumentRead(val text: String, val truncated: Boolean)
 
+/** Preferensi layar baca dokumen (pilihan "Ukuran Teks"), disimpan lokal. */
+object ReaderPrefs {
+
+    private const val PREFS_NAME = "reader_prefs"
+    private const val KEY_TEXT_SCALE = "text_scale"
+
+    /** Skala ukuran teks viewer: 1.0 = sedang. */
+    fun textScale(context: Context): Float =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getFloat(KEY_TEXT_SCALE, 1.0f)
+
+    fun setTextScale(context: Context, scale: Float) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(KEY_TEXT_SCALE, scale)
+            .apply()
+    }
+}
+
 /** Format ukuran berkas ringkas: B, KB, MB. */
 fun formatFileSize(bytes: Long): String = when {
     bytes < 1_000 -> "$bytes B"

@@ -131,7 +131,7 @@ fun DocumentsScreen(
                     modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
                 )
                 IosSearchField(state = searchState, placeholder = "Cari")
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(14.dp))
             }
 
             when (val current = state) {

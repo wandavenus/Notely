@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -63,6 +64,7 @@ import com.composables.icons.lucide.Ellipsis
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.X
 import dev.wndavenz.notely.documents.DocumentFile
+import dev.wndavenz.notely.documents.ReaderPrefs
 import dev.wndavenz.notely.ui.DocumentReaderViewModel
 import dev.wndavenz.notely.ui.components.EmptyStateText
 import dev.wndavenz.notely.ui.components.IosActionSheet
@@ -96,7 +98,12 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     var wordWrap by remember { mutableStateOf(true) }
     var showMenu by remember { mutableStateOf(false) }
     var showGoToLine by remember { mutableStateOf(false) }
+    var showTextSizeSheet by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
+
+    // Ukuran teks viewer (pilihan menu titik tiga), tersimpan antar sesi.
+    val context = LocalContext.current
+    var textScale by remember { mutableStateOf(ReaderPrefs.textScale(context)) }
 
     val listState = rememberLazyListState()
     val editorScrollState = rememberScrollState()
@@ -147,7 +154,9 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     fun goToLine(lineNumber: Int) {
         when {
             editing -> {
-                val px = with(density) { (20.sp * (lineNumber - 1).coerceAtLeast(0)).toPx() }
+                val px = with(density) {
+                    (20.sp * textScale * (lineNumber - 1).coerceAtLeast(0)).toPx()
+                }
                 scope.launch { editorScrollState.animateScrollTo(px.toInt()) }
             }
             document.isMarkdown -> {
@@ -170,6 +179,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
             backLabel = "Dokumen",
             onBack = onBack,
             centerTitle = document.name,
+            titleMarquee = true,
             trailing = {
                 IosIconButton(
                     icon = Lucide.Ellipsis,
@@ -232,6 +242,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 viewModel = viewModel,
                 initialText = state.text,
                 scrollState = editorScrollState,
+                textScale = textScale,
                 modifier = Modifier.weight(1f),
             )
 
@@ -242,7 +253,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                     .padding(horizontal = 20.dp),
             ) {
                 items(blocksWithLines.size) { index ->
-                    MarkdownBlock(blocksWithLines[index].first, query, wordWrap)
+                    MarkdownBlock(blocksWithLines[index].first, query, wordWrap, textScale)
                 }
                 if (state.truncated) {
                     item { TruncatedNote() }
@@ -254,7 +265,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 state = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 12.dp),
             ) {
                 items(textLines.size) { index ->
                     NumberedLineRow(number = index + 1, wrap = wordWrap) { softWrap, modifier ->
@@ -263,7 +274,7 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                                 AnnotatedString(textLines[index].ifEmpty { " " }),
                                 query,
                             ),
-                            style = NotelyText.EditorBody,
+                            style = scaledTextStyle(NotelyText.EditorBody, textScale),
                             softWrap = softWrap,
                             modifier = modifier,
                         )
@@ -289,6 +300,10 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                     showGoToLine = true
                     showMenu = false
                 },
+                SheetAction(label = "Ukuran Teks") {
+                    showTextSizeSheet = true
+                    showMenu = false
+                },
                 SheetAction(
                     label = if (readOnly) "Hanya Baca ✓" else "Hanya Baca",
                     color = NotelyColors.Label,
@@ -307,6 +322,29 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                 },
             ),
             onDismiss = { showMenu = false },
+        )
+    }
+
+    if (showTextSizeSheet) {
+        val sizes = listOf(
+            "Kecil" to 0.85f,
+            "Sedang" to 1.0f,
+            "Besar" to 1.15f,
+            "Sangat Besar" to 1.3f,
+        )
+        IosActionSheet(
+            actions = sizes.map { (label, scale) ->
+                SheetAction(
+                    label = if (textScale == scale) "$label ✓" else label,
+                    color = NotelyColors.Label,
+                ) {
+                    textScale = scale
+                    ReaderPrefs.setTextScale(context, scale)
+                    showTextSizeSheet = false
+                }
+            },
+            onDismiss = { showTextSizeSheet = false },
+            title = "Ukuran Teks",
         )
     }
 
@@ -344,6 +382,7 @@ private fun DocumentSourceEditor(
     viewModel: DocumentReaderViewModel,
     initialText: String,
     scrollState: androidx.compose.foundation.ScrollState,
+    textScale: Float,
     modifier: Modifier = Modifier,
 ) {
     val editorState = rememberTextFieldState()
@@ -371,17 +410,18 @@ private fun DocumentSourceEditor(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .drawBehind {
-                    // Garis putih vertikal pembatas nomor baris <-> teks,
+                    // Garis vertikal pembatas nomor baris <-> teks (0,5 dp,
+                    // putih 70% — lebih tipis & gelap dr putih penuh),
                     // setinggi isi editor yang sebenarnya (digambar belakangan
                     // supaya tidak perlu menebak tinggi konten).
-                    val x = 20.dp.toPx() + 30.dp.toPx() + 8.dp.toPx()
+                    val x = 12.dp.toPx() + 30.dp.toPx() + 8.dp.toPx()
                     drawLine(
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.7f),
                         start = androidx.compose.ui.geometry.Offset(x, 0f),
                         end = androidx.compose.ui.geometry.Offset(x, size.height),
-                        strokeWidth = 1.dp.toPx(),
+                        strokeWidth = 0.5.dp.toPx(),
                     )
                 },
         ) {
@@ -392,8 +432,8 @@ private fun DocumentSourceEditor(
                         style = NotelyText.Caption.copy(
                             color = NotelyColors.TertiaryLabel,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 13.5.sp,
-                            lineHeight = 20.sp,
+                            fontSize = 13.5.sp * textScale,
+                            lineHeight = 20.sp * textScale,
                             textAlign = TextAlign.End,
                         ),
                         modifier = Modifier.fillMaxWidth(),
@@ -406,8 +446,8 @@ private fun DocumentSourceEditor(
                 modifier = Modifier.weight(1f),
                 textStyle = NotelyText.Callout.copy(
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 13.5.sp,
-                    lineHeight = 20.sp,
+                    fontSize = 13.5.sp * textScale,
+                    lineHeight = 20.sp * textScale,
                 ),
                 cursorBrush = SolidColor(NotelyColors.Blue),
                 lineLimits = TextFieldLineLimits.MultiLine(),
@@ -425,24 +465,35 @@ private fun TruncatedNote() {
     )
 }
 
+/** Kalikan ukuran huruf + tinggi baris satu gaya teks dengan skala Ukuran Teks. */
+private fun scaledTextStyle(style: androidx.compose.ui.text.TextStyle, scale: Float) =
+    style.copy(fontSize = style.fontSize * scale, lineHeight = style.lineHeight * scale)
+
 @Composable
-private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean) {
+private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean, textScale: Float) {
+    val bodyStyle = scaledTextStyle(NotelyText.EditorBody, textScale)
     when (block) {
         is MdBlock.Heading -> {
             Spacer(Modifier.height(if (block.level == 1) 10.dp else 16.dp))
             BasicText(
                 text = inlineMarkdown(block.text, query),
                 style = when (block.level) {
-                    1 -> NotelyText.EditorTitle.copy(fontSize = 26.sp, lineHeight = 32.sp)
-                    2 -> NotelyText.EditorTitle
-                    else -> NotelyText.BodySemibold.copy(fontSize = 18.sp, lineHeight = 24.sp)
+                    1 -> NotelyText.EditorTitle.copy(
+                        fontSize = 26.sp * textScale,
+                        lineHeight = 32.sp * textScale,
+                    )
+                    2 -> scaledTextStyle(NotelyText.EditorTitle, textScale)
+                    else -> NotelyText.BodySemibold.copy(
+                        fontSize = 18.sp * textScale,
+                        lineHeight = 24.sp * textScale,
+                    )
                 },
             )
             Spacer(Modifier.height(6.dp))
         }
 
         is MdBlock.Paragraph -> {
-            BasicText(text = inlineMarkdown(block.text, query), style = NotelyText.EditorBody)
+            BasicText(text = inlineMarkdown(block.text, query), style = bodyStyle)
             Spacer(Modifier.height(10.dp))
         }
 
@@ -454,11 +505,11 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean) {
                         false -> "☐  "
                         null -> "•  "
                     },
-                    style = NotelyText.EditorBody.copy(color = NotelyColors.Blue),
+                    style = bodyStyle.copy(color = NotelyColors.Blue),
                 )
                 BasicText(
                     text = inlineMarkdown(block.text, query),
-                    style = NotelyText.EditorBody,
+                    style = bodyStyle,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -468,11 +519,11 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean) {
             Row(Modifier.padding(start = 4.dp, bottom = 6.dp)) {
                 BasicText(
                     text = "${block.number}.  ",
-                    style = NotelyText.EditorBody.copy(color = NotelyColors.Blue),
+                    style = bodyStyle.copy(color = NotelyColors.Blue),
                 )
                 BasicText(
                     text = inlineMarkdown(block.text, query),
-                    style = NotelyText.EditorBody,
+                    style = bodyStyle,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -502,8 +553,8 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean) {
                             text = line,
                             style = NotelyText.Callout.copy(
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 13.5.sp,
-                                lineHeight = 19.sp,
+                                fontSize = 13.5.sp * textScale,
+                                lineHeight = 19.sp * textScale,
                             ),
                             softWrap = softWrap,
                             modifier = modifier,
@@ -525,7 +576,7 @@ private fun MarkdownBlock(block: MdBlock, query: String, wordWrap: Boolean) {
                 Spacer(Modifier.width(12.dp))
                 BasicText(
                     text = inlineMarkdown(block.text, query),
-                    style = NotelyText.EditorBody.copy(color = NotelyColors.SecondaryLabel),
+                    style = bodyStyle.copy(color = NotelyColors.SecondaryLabel),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -638,9 +689,9 @@ private fun NumberedLineRow(
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier
-                .width(1.dp)
+                .width(0.5.dp)
                 .fillMaxHeight()
-                .background(Color.White),
+                .background(Color.White.copy(alpha = 0.7f)),
         )
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {

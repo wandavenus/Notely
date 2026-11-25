@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.combinedClickable
@@ -123,6 +124,7 @@ fun IosTopBar(
     onBack: (() -> Unit)? = null,
     centerTitle: String? = null,
     trailing: @Composable () -> Unit = {},
+    titleMarquee: Boolean = false,
 ) {
     Box(
         modifier = modifier
@@ -154,11 +156,30 @@ fun IosTopBar(
             }
         }
         if (centerTitle != null) {
-            BasicText(
-                text = centerTitle,
-                style = NotelyText.NavTitle.copy(color = NotelyColors.Label),
-                modifier = Modifier.align(Alignment.Center),
-            )
+            if (titleMarquee) {
+                // Judul panjang (mis. nama berkas) berjalan menyamping
+                // ketimbang kepotong; lebar dibatasi supaya tidak menabrak
+                // tombol kembali dan menu di kanan.
+                BasicText(
+                    text = centerTitle,
+                    style = NotelyText.NavTitle.copy(
+                        color = NotelyColors.Label,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 104.dp)
+                        .basicMarquee(),
+                    maxLines = 1,
+                )
+            } else {
+                BasicText(
+                    text = centerTitle,
+                    style = NotelyText.NavTitle.copy(color = NotelyColors.Label),
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
         }
         Box(modifier = Modifier.align(Alignment.CenterEnd)) {
             trailing()
