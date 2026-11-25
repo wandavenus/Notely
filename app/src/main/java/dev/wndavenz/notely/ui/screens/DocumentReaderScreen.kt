@@ -805,7 +805,11 @@ private fun MarkdownBlock(
         ) {
             Column(
                 Modifier
-                    .wrapContentWidth(unbounded = true)
+                    // WAJIB rata kiri (Start): bawaan wrapContentWidth itu
+                    // Center — blok yang lebih lebar dari layar jadi
+                    // ketengah dan yang kelihatan cuma potongan tengahnya,
+                    // awal barisnya hilang (tampilan "ngacak").
+                    .wrapContentWidth(unbounded = true, align = Alignment.Start)
                     .offset { IntOffset(-maxScrollX.roundToInt(), 0) }
                     .onSizeChanged { onContentWidth(it.width) },
             ) {
