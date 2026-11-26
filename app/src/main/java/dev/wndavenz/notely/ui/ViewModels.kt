@@ -9,9 +9,13 @@ import dev.wndavenz.notely.data.NoteEntity
 import dev.wndavenz.notely.data.NotesRepository
 import dev.wndavenz.notely.documents.DocumentFile
 import dev.wndavenz.notely.documents.DocumentScanner
+import dev.wndavenz.notely.utils.Markdown
+import dev.wndavenz.notely.utils.MdBlock
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -278,6 +282,10 @@ data class DocumentReaderUiState(
     val text: String = "",
     val truncated: Boolean = false,
     val failed: Boolean = false,
+    /** Blok Markdown terurai (kosong untuk .txt); dihitung di utas latar. */
+    val blocks: List<Pair<MdBlock, Int>> = emptyList(),
+    /** Teks dipecah per baris, untuk viewer TXT dan pencarian. */
+    val lines: List<String> = emptyList(),
 )
 
 class DocumentReaderViewModel(private val document: DocumentFile) : ViewModel() {
@@ -291,15 +299,45 @@ class DocumentReaderViewModel(private val document: DocumentFile) : ViewModel() 
         viewModelScope.launch {
             try {
                 val read = DocumentScanner.readText(document)
+                // Urai Markdown + pecah baris di utas latar (Default),
+                // BUKAN di komposisi: membuka berkas besar tidak lagi
+                // membebani utas utama.
+                val prepared = withContext(Dispatchers.Default) {
+                    val parsed = if (document.isMarkdown) {
+                        Markdown.parseWithLines(read.text)
+                    } else {
+                        emptyList()
+                    }
+                    parsed to read.text.split('\n')
+                }
                 _state.value = DocumentReaderUiState(
                     loaded = true,
                     text = read.text,
                     truncated = read.truncated,
+                    blocks = prepared.first,
+                    lines = prepared.second,
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = DocumentReaderUiState(loaded = true, failed = true)
             }
+        }
+    }
+
+    /**
+     * Hitung ulang blok Markdown dari teks terbaru, di utas latar. Dipanggil
+     * layar saat kembali ke mode baca sesudah mengedit: selama mode edit
+     * blok sengaja tidak dihitung ulang (hasil render tidak ditampilkan,
+     * dan simpan otomatis tidak perlu membayar biaya urai tiap jeda).
+     */
+    fun refreshBlocks() {
+        val current = _state.value
+        if (!current.loaded || current.failed || !document.isMarkdown) return
+        viewModelScope.launch {
+            val blocks = withContext(Dispatchers.Default) {
+                Markdown.parseWithLines(current.text)
+            }
+            _state.update { it.copy(blocks = blocks) }
         }
     }
 
@@ -320,10 +358,13 @@ class DocumentReaderViewModel(private val document: DocumentFile) : ViewModel() 
 
     private suspend fun writeBack(text: String) {
         try {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 java.io.File(document.path).writeText(text, Charsets.UTF_8)
             }
-            _state.update { it.copy(text = text, truncated = false) }
+            // Baris diperbarui untuk pencarian selama mengedit; blok
+            // Markdown dihitung ulang nanti oleh refreshBlocks().
+            val lines = withContext(Dispatchers.Default) { text.split('\n') }
+            _state.update { it.copy(text = text, truncated = false, lines = lines) }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             // Gagal menulis (mis. file dipindah): biarkan teks layar apa adanya;

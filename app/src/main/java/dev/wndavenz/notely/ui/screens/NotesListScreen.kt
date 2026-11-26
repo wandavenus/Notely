@@ -77,6 +77,13 @@ fun NotesListScreen(
             notes.filter { it.body.contains(query, ignoreCase = true) }
         }
     }
+    // Sematan + kelompok tanggal dihitung sekali per daftar tampil, di luar
+    // lambda isi LazyColumn — di dalam lambda, hitungan ini jalan ulang
+    // tiap recomposition (termasuk tiap ketikan pencarian).
+    val pinnedNotes = remember(visible) { visible.filter { it.pinned } }
+    val groupedNotes = remember(visible) {
+        visible.filter { !it.pinned }.groupBy { dateGroupOf(it.updatedAt) }
+    }
 
     var actionNote by remember { mutableStateOf<NoteEntity?>(null) }
     var confirmEmptyTrash by remember { mutableStateOf(false) }
@@ -143,7 +150,7 @@ fun NotesListScreen(
                     )
                 }
             } else if (query.isNotBlank()) {
-                items(visible, key = { it.id }) { note ->
+                items(visible, key = { it.id }, contentType = { "note" }) { note ->
                     NoteCard(
                         note = note,
                         onClick = { onOpenEditor(note) },
@@ -152,11 +159,9 @@ fun NotesListScreen(
                     Spacer(Modifier.height(10.dp))
                 }
             } else {
-                val pinned = visible.filter { it.pinned }
-                val rest = visible.filter { !it.pinned }
-                if (pinned.isNotEmpty() && !isTrash) {
+                if (pinnedNotes.isNotEmpty() && !isTrash) {
                     item { NoteSectionHeader(title = "Disematkan", pinned = true) }
-                    items(pinned, key = { it.id }) { note ->
+                    items(pinnedNotes, key = { it.id }, contentType = { "note" }) { note ->
                         NoteCard(
                             note = note,
                             onClick = { onOpenEditor(note) },
@@ -165,11 +170,10 @@ fun NotesListScreen(
                         Spacer(Modifier.height(10.dp))
                     }
                 }
-                val grouped = rest.groupBy { dateGroupOf(it.updatedAt) }
                 for (group in NoteDateGroup.entries) {
-                    val groupNotes = grouped[group] ?: continue
+                    val groupNotes = groupedNotes[group] ?: continue
                     item { NoteSectionHeader(title = group.label, pinned = false) }
-                    items(groupNotes, key = { it.id }) { note ->
+                    items(groupNotes, key = { it.id }, contentType = { "note" }) { note ->
                         NoteCard(
                             note = note,
                             onClick = { onOpenEditor(note) },

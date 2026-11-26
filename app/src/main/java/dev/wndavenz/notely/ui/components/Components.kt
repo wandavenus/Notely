@@ -1,6 +1,6 @@
 package dev.wndavenz.notely.ui.components
 
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,12 +36,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.ChevronLeft
 import com.composables.icons.lucide.Lucide
@@ -194,8 +196,12 @@ fun IosSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val knobOffset by animateDpAsState(
-        targetValue = if (checked) 22.dp else 2.dp,
+    // Posisi kenop dianimasikan sebagai piksel dan dibaca di dalam lambda
+    // offset (fase layout): geseran kenop tidak lagi merecomposition
+    // saklar di tiap frame tween.
+    val density = LocalDensity.current
+    val knobOffset by animateIntAsState(
+        targetValue = with(density) { (if (checked) 22.dp else 2.dp).roundToPx() },
         animationSpec = tween(durationMillis = 200),
         label = "kenop saklar",
     )
@@ -208,7 +214,7 @@ fun IosSwitch(
     ) {
         Box(
             modifier = Modifier
-                .offset(x = knobOffset, y = 2.dp)
+                .offset { IntOffset(knobOffset, 2.dp.roundToPx()) }
                 .size(27.dp)
                 .clip(RoundedCornerShape(50))
                 .background(Color.White),

@@ -8,11 +8,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -94,7 +92,6 @@ import dev.wndavenz.notely.ui.components.SheetAction
 import dev.wndavenz.notely.ui.theme.NotelyColors
 import dev.wndavenz.notely.ui.theme.NotelyText
 import dev.wndavenz.notely.ui.viewModelFactory
-import dev.wndavenz.notely.utils.Markdown
 import dev.wndavenz.notely.utils.MarkdownInline
 import dev.wndavenz.notely.utils.MdBlock
 import kotlin.math.abs
@@ -150,16 +147,16 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    val blocksWithLines = remember(state.text, document.isMarkdown, readOnly) {
-        // Pas mode edit, hasil render tidak ditampilkan: lewati parse supaya
-        // simpan otomatis tidak membekukan editor tiap beberapa detik.
-        if (document.isMarkdown && readOnly && state.loaded && !state.failed) {
-            Markdown.parseWithLines(state.text)
-        } else {
-            emptyList()
-        }
+    // Blok terurai + baris teks dihitung DocumentReaderViewModel di utas
+    // latar, bukan di komposisi: membuka berkas besar tidak lagi mengurai
+    // Markdown di utas utama. Selama mode edit hasil render tidak
+    // ditampilkan dan blok tidak dihitung ulang; dihitung sekali saat
+    // kembali ke mode baca.
+    val blocksWithLines = state.blocks
+    val textLines = state.lines
+    LaunchedEffect(readOnly) {
+        if (readOnly) viewModel.refreshBlocks()
     }
-    val textLines = remember(state.text) { state.text.split('\n') }
 
     // --- Cari ---
     val searchState = rememberTextFieldState()
@@ -422,12 +419,17 @@ fun DocumentReaderScreen(document: DocumentFile, onBack: () -> Unit) {
                         .padding(start = 0.dp, end = 12.dp),
                 ) {
                     items(textLines.size) { index ->
+                        // Sorotan cari dihitung sekali per (isi baris, query),
+                        // bukan tiap recomposition baris.
+                        val highlighted = remember(textLines[index], query) {
+                            addHighlights(
+                                AnnotatedString(textLines[index].ifEmpty { " " }),
+                                query,
+                            )
+                        }
                         NumberedLineRow(number = index + 1, wrap = wordWrap) { softWrap, modifier ->
                             BasicText(
-                                text = addHighlights(
-                                    AnnotatedString(textLines[index].ifEmpty { " " }),
-                                    query,
-                                ),
+                                text = highlighted,
                                 style = scaledTextStyle(NotelyText.EditorBody, textScale),
                                 softWrap = softWrap,
                                 modifier = modifier,
@@ -694,7 +696,11 @@ private fun TextSizeDialog(
                 Box(
                     Modifier
                         .align(Alignment.CenterStart)
-                        .width(with(density) { (trackWidthPx * fraction).toDp() })
+                        // Lebar rel terisi cuma tergantung fraction (skala):
+                        // fillMaxWidth(fraction) tidak perlu membaca
+                        // trackWidthPx di komposisi (dulu: state ditulis
+                        // onSizeChanged lalu dibaca di komposisi).
+                        .fillMaxWidth(fraction)
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(NotelyColors.Blue),
@@ -891,11 +897,25 @@ private fun MarkdownBlock(
 @Composable
 private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolean, textScale: Float) {
     val bodyStyle = scaledTextStyle(NotelyText.EditorBody, textScale)
+    // Gaya sebaris diurai SEKALI per (blok, query) lalu disimpan: tanpa ini,
+    // tiap recomposition blok — mis. tiap frame geseran slider Ukuran Teks —
+    // mengurai ulang Markdown sebaris dan memindai sorotan dari nol.
+    // (Blok kode memang sudah begini lewat highlightedCodeLines.)
+    val inlineText = remember(block, query) {
+        when (block) {
+            is MdBlock.Heading -> inlineMarkdown(block.text, query)
+            is MdBlock.Paragraph -> inlineMarkdown(block.text, query)
+            is MdBlock.Bullet -> inlineMarkdown(block.text, query)
+            is MdBlock.Numbered -> inlineMarkdown(block.text, query)
+            is MdBlock.Quote -> inlineMarkdown(block.text, query)
+            else -> AnnotatedString("")
+        }
+    }
     when (block) {
         is MdBlock.Heading -> {
             Spacer(Modifier.height(if (block.level == 1) 10.dp else 16.dp))
             MdWrapText(
-                text = inlineMarkdown(block.text, query),
+                text = inlineText,
                 style = when (block.level) {
                     1 -> NotelyText.EditorTitle.copy(
                         fontSize = 26.sp * textScale,
@@ -914,7 +934,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
 
         is MdBlock.Paragraph -> {
             MdWrapText(
-                text = inlineMarkdown(block.text, query),
+                text = inlineText,
                 style = bodyStyle,
                 wordWrap = wordWrap,
             )
@@ -934,7 +954,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                         style = bodyStyle.copy(color = NotelyColors.Blue),
                     )
                     MdWrapText(
-                        text = inlineMarkdown(block.text, query),
+                        text = inlineText,
                         style = bodyStyle,
                         wordWrap = wordWrap,
                         modifier = Modifier.weight(1f),
@@ -949,7 +969,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                         withStyle(SpanStyle(color = NotelyColors.Blue)) {
                             append(marker)
                         }
-                        append(inlineMarkdown(block.text, query))
+                        append(inlineText)
                     },
                     style = bodyStyle,
                     softWrap = false,
@@ -967,7 +987,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                         style = bodyStyle.copy(color = NotelyColors.Blue),
                     )
                     MdWrapText(
-                        text = inlineMarkdown(block.text, query),
+                        text = inlineText,
                         style = bodyStyle,
                         wordWrap = wordWrap,
                         modifier = Modifier.weight(1f),
@@ -979,7 +999,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                         withStyle(SpanStyle(color = NotelyColors.Blue)) {
                             append("${block.number}.  ")
                         }
-                        append(inlineMarkdown(block.text, query))
+                        append(inlineText)
                     },
                     style = bodyStyle,
                     softWrap = false,
@@ -1022,7 +1042,21 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                     (1..codeLines.size).joinToString("\n")
                 }
                 val codeScrollState = rememberScrollState()
-                Row(Modifier.height(IntrinsicSize.Max)) {
+                Row(
+                    Modifier.drawBehind {
+                        // Pembatas nomor <-> kode digambar di fase gambar
+                        // (tinggi baris sudah diketahui di sana). Cara lama
+                        // memakai IntrinsicSize.Max: dua putaran layout
+                        // untuk tiap blok kode.
+                        val x = 26.dp.toPx() + 8.dp.toPx() + 0.15.dp.toPx()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.7f),
+                            start = androidx.compose.ui.geometry.Offset(x, 0f),
+                            end = androidx.compose.ui.geometry.Offset(x, size.height),
+                            strokeWidth = 0.3.dp.toPx(),
+                        )
+                    },
+                ) {
                     BasicText(
                         text = codeNumbers,
                         style = NotelyText.Caption.copy(
@@ -1035,12 +1069,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                         modifier = Modifier.width(26.dp),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Box(
-                        Modifier
-                            .width(0.3.dp)
-                            .fillMaxHeight()
-                            .background(Color.White.copy(alpha = 0.7f)),
-                    )
+                    Spacer(Modifier.width(0.3.dp))
                     Spacer(Modifier.width(10.dp))
                     BasicText(
                         text = combinedCode,
@@ -1071,7 +1100,7 @@ private fun MarkdownBlockContent(block: MdBlock, query: String, wordWrap: Boolea
                 )
                 Spacer(Modifier.width(12.dp))
                 MdWrapText(
-                    text = inlineMarkdown(block.text, query),
+                    text = inlineText,
                     style = bodyStyle.copy(color = NotelyColors.SecondaryLabel),
                     wordWrap = wordWrap,
                     // Mode bentang tanpa weight: lebar Row tak terbatas,
@@ -1171,10 +1200,23 @@ private fun NumberedLineRow(
     content: @Composable (softWrap: Boolean, modifier: Modifier) -> Unit,
 ) {
     val lineScroll = rememberScrollState()
+    val numberWidth = if (compact) 26.dp else 30.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Max),
+            .drawBehind {
+                // Garis pembatas vertikal digambar di fase gambar, setinggi
+                // baris apa adanya. Cara lama memakai IntrinsicSize.Max:
+                // dua putaran layout untuk SETIAP baris lazy (berasa pada
+                // berkas ribuan baris).
+                val x = numberWidth.toPx() + 8.dp.toPx() + 0.15.dp.toPx()
+                drawLine(
+                    color = Color.White.copy(alpha = 0.7f),
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, size.height),
+                    strokeWidth = 0.3.dp.toPx(),
+                )
+            },
     ) {
         BasicText(
             text = number.toString(),
@@ -1183,15 +1225,10 @@ private fun NumberedLineRow(
                 textAlign = TextAlign.End,
                 fontFamily = if (compact) FontFamily.Monospace else null,
             ),
-            modifier = Modifier.width(if (compact) 26.dp else 30.dp),
+            modifier = Modifier.width(numberWidth),
         )
         Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier
-                .width(0.3.dp)
-                .fillMaxHeight()
-                .background(Color.White.copy(alpha = 0.7f)),
-        )
+        Spacer(Modifier.width(0.3.dp))
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {
             content(

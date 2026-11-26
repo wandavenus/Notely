@@ -126,6 +126,15 @@ fun DocumentsScreen(
             }
         }
     }
+    // Sematan + kelompok tanggal dihitung sekali per daftar tampil, di luar
+    // lambda isi LazyColumn (alasan sama seperti daftar catatan).
+    val pinnedDocs = remember(visible, pinnedPaths) {
+        visible.filter { it.path in pinnedPaths }
+    }
+    val groupedDocs = remember(visible, pinnedPaths) {
+        visible.filter { it.path !in pinnedPaths }
+            .groupBy { dateGroupOf(it.modifiedAt) }
+    }
 
     Column(
         modifier = Modifier
@@ -210,7 +219,7 @@ fun DocumentsScreen(
                         }
                     } else if (query.isNotBlank()) {
                         // Mode cari: daftar datar, sama seperti Catatan.
-                        items(visible, key = { it.path }) { document ->
+                        items(visible, key = { it.path }, contentType = { "document" }) { document ->
                             DocumentCard(
                                 document = document,
                                 onClick = { onOpenDocument(document) },
@@ -221,11 +230,9 @@ fun DocumentsScreen(
                     } else {
                         // Seksi Disematkan + kelompok tanggal, sama seperti
                         // halaman Catatan.
-                        val pinned = visible.filter { it.path in pinnedPaths }
-                        val rest = visible.filter { it.path !in pinnedPaths }
-                        if (pinned.isNotEmpty()) {
+                        if (pinnedDocs.isNotEmpty()) {
                             item { NoteSectionHeader(title = "Disematkan", pinned = true) }
-                            items(pinned, key = { it.path }) { document ->
+                            items(pinnedDocs, key = { it.path }, contentType = { "document" }) { document ->
                                 DocumentCard(
                                     document = document,
                                     onClick = { onOpenDocument(document) },
@@ -234,11 +241,10 @@ fun DocumentsScreen(
                                 Spacer(Modifier.height(10.dp))
                             }
                         }
-                        val grouped = rest.groupBy { dateGroupOf(it.modifiedAt) }
                         for (group in NoteDateGroup.entries) {
-                            val groupDocuments = grouped[group] ?: continue
+                            val groupDocuments = groupedDocs[group] ?: continue
                             item { NoteSectionHeader(title = group.label, pinned = false) }
-                            items(groupDocuments, key = { it.path }) { document ->
+                            items(groupDocuments, key = { it.path }, contentType = { "document" }) { document ->
                                 DocumentCard(
                                     document = document,
                                     onClick = { onOpenDocument(document) },

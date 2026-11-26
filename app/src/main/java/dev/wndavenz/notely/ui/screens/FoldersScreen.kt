@@ -150,7 +150,7 @@ fun FoldersScreen(
                 if (state.searchResults.isEmpty()) {
                     item { EmptyStateText("Tidak ada hasil untuk pencarian ini.") }
                 } else {
-                    items(state.searchResults, key = { it.id }) { note ->
+                    items(state.searchResults, key = { it.id }, contentType = { "note" }) { note ->
                         NoteCard(
                             note = note,
                             onClick = { onOpenEditor(note) },
